@@ -1,0 +1,68 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE / editors
+.idea/
+.vscode/
+.cursor/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+
+# Java / Maven / Gradle
+**/target/
+**/.gradle/
+**/build/
+**/out/
+*.class
+*.jar
+*.war
+*.ear
+hs_err_pid*
+
+# Python
+**/__pycache__/
+**/.venv/
+**/venv/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+*.egg
+
+# Node / Next.js
+**/node_modules/
+**/.next/
+**/out/
+**/coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# Logs & temp
+*.log
+logs/
+tmp/
+temp/
+.cache/
+scripts/*.log
+
+# Docker
+docker-data/
+
+# Test / coverage
+**/htmlcov/
+**/jacoco/
+**/test-results/

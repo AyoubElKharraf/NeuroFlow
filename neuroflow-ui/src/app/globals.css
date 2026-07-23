@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+  --font-sans: "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(61, 214, 198, 0.18), transparent 55%),
+    radial-gradient(900px 500px at 90% 0%, rgba(80, 120, 255, 0.12), transparent 50%),
+    #0b1220;
+}

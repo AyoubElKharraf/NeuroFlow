@@ -1,0 +1,82 @@
+server:
+  port: ${BACKEND_PORT:8080}
+
+spring:
+  application:
+    name: neuroflow-backend
+
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5433/neuroflow_db}
+    username: ${POSTGRES_USER:neuroflow}
+    password: ${POSTGRES_PASSWORD:neuroflow}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: true
+    show-sql: false
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+  cloud:
+    function:
+      definition: telemetryConsumer;mlPredictionConsumer
+    stream:
+      bindings:
+        telemetryConsumer-in-0:
+          destination: telemetry-events
+          group: neuroflow-backend
+          content-type: application/json
+        mlPredictionConsumer-in-0:
+          destination: ml-predictions
+          group: neuroflow-backend
+          content-type: application/json
+      kafka:
+        binder:
+          brokers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+          auto-create-topics: true
+          consumer-properties:
+            key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+            value.deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+          producer-properties:
+            key.serializer: org.apache.kafka.common.serialization.StringSerializer
+            value.serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+
+neuroflow:
+  clickhouse:
+    url: ${CLICKHOUSE_URL:jdbc:clickhouse://localhost:8123/neuroflow_analytics}
+    username: ${CLICKHOUSE_USER:neuroflow}
+    password: ${CLICKHOUSE_PASSWORD:neuroflow}
+    driver-class-name: com.clickhouse.jdbc.ClickHouseDriver
+  analytics:
+    base-url: ${ANALYTICS_BASE_URL:http://localhost:8000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
+
+logging:
+  level:
+    root: INFO
+    com.neuroflow: DEBUG
+    org.springframework.cloud.stream: INFO
