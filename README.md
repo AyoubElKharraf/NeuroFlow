@@ -68,7 +68,7 @@ npm run dev
 ## Roadmap
 
 - [x] **Phase 1** — Docker Compose + multi-module scaffolding
-- [ ] **Phase 2** — ClickHouse writer, anomaly detection, SSE alerts
-- [ ] **Phase 3** — Evidently drift engine
+- [x] **Phase 2** — ClickHouse writer, Kafka consumers, simulation API
+- [x] **Phase 3** — Evidently drift engine + Spring analytics client
 - [ ] **Phase 4** — Full dashboard (live logs, drift charts, health grid)
 - [ ] **Phase 5** — Testcontainers + GitHub Actions CI

@@ -38,6 +38,7 @@ public class SimulationService {
     }
 
     public Map<String, Object> start() {
+        emitted.set(0);
         running.set(true);
         log.info("simulation_started rate=~5 msg/sec");
         return status();
@@ -64,8 +65,10 @@ public class SimulationService {
         }
         TelemetryEvent telemetry = randomTelemetry();
         boolean sent = streamBridge.send(
-                "telemetry-events",
-                MessageBuilder.withPayload(telemetry).build()
+                "telemetry-events-out",
+                MessageBuilder.withPayload(telemetry)
+                        .setHeader("contentType", "application/json")
+                        .build()
         );
         if (sent) {
             emitted.incrementAndGet();
@@ -75,7 +78,12 @@ public class SimulationService {
 
         if (emitted.get() % 5 == 0) {
             MlPredictionEvent ml = randomMlPrediction();
-            streamBridge.send("ml-predictions", MessageBuilder.withPayload(ml).build());
+            streamBridge.send(
+                    "ml-predictions-out",
+                    MessageBuilder.withPayload(ml)
+                            .setHeader("contentType", "application/json")
+                            .build()
+            );
         }
     }
 
@@ -95,17 +103,27 @@ public class SimulationService {
     private MlPredictionEvent randomMlPrediction() {
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         double confidence = rnd.nextDouble(0.55, 0.99);
+        double age = clamp(rnd.nextGaussian() * 12.0 + 42.0, 18.0, 80.0);
+        double income = clamp(Math.exp(rnd.nextGaussian() * 0.45 + 10.5), 15_000.0, 250_000.0);
+        double creditScore = clamp(rnd.nextGaussian() * 55.0 + 680.0, 300.0, 850.0);
+        double loanAmount = clamp(Math.exp(rnd.nextGaussian() * 0.55 + 9.5), 1_000.0, 150_000.0);
         return new MlPredictionEvent(
-                "fraud-classifier",
-                "v1.2.0",
+                "loan-risk-model",
+                "v1.0.0",
                 rnd.nextLong(5, 80),
-                rnd.nextBoolean() ? "fraud" : "legit",
+                rnd.nextBoolean() ? "approve" : "reject",
                 Map.of(
-                        "amount", rnd.nextDouble(5, 500),
-                        "merchant_risk", rnd.nextDouble(0, 1),
+                        "age", Math.round(age * 10.0) / 10.0,
+                        "income", Math.round(income * 100.0) / 100.0,
+                        "credit_score", Math.round(creditScore * 10.0) / 10.0,
+                        "loan_amount", Math.round(loanAmount * 100.0) / 100.0,
                         "confidence", confidence
                 ),
                 Instant.now()
         );
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 }

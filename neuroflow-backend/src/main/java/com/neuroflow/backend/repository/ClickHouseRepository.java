@@ -100,6 +100,20 @@ public class ClickHouseRepository {
         return count == null ? 0L : count;
     }
 
+    public List<String> fetchRecentMlFeatureJson(int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 1000));
+        return clickHouseJdbcTemplate.query(
+                """
+                        SELECT features_json
+                        FROM neuroflow_analytics.ml_predictions
+                        ORDER BY event_time DESC
+                        LIMIT ?
+                        """,
+                (rs, rowNum) -> rs.getString("features_json"),
+                safeLimit
+        );
+    }
+
     private static Timestamp toTimestamp(Instant instant) {
         return Timestamp.from(instant == null ? Instant.now() : instant);
     }

@@ -1,16 +1,41 @@
 # neuroflow-analytics
 
-MLOps analytics — **Python 3.11 / FastAPI** + Evidently AI (Phase 3).
+MLOps analytics — **Python / FastAPI** + **Evidently AI** (Phase 3).
 
-## Run (local)
+## Run (cmd.exe)
+
+```bat
+scripts\run-analytics.cmd
+```
+
+Or manually:
+
+```bat
+cd neuroflow-analytics
+.venv\Scripts\activate.bat
+uvicorn app.main:app --host 127.0.0.1 --port 8001
+```
+
+> `Activate.ps1` only works in **PowerShell**. In **cmd.exe** use `activate.bat`.
+
+## Run (PowerShell)
 
 ```powershell
 cd neuroflow-analytics
-python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
 
-Health: `GET http://localhost:8000/health`  
-Drift scaffold: `POST http://localhost:8000/api/v1/drift/check`
+## Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Liveness |
+| POST | `/api/v1/drift/check` | JSON drift report vs training baseline |
+| GET | `/api/v1/drift/report-html` | Evidently interactive HTML report |
+
+### Verify
+
+```bat
+scripts\test-phase3.cmd
+```
