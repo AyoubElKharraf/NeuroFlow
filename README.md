@@ -65,10 +65,33 @@ npm install
 npm run dev
 ```
 
+## Stop everything (end of day)
+
+```bat
+scripts\stop-all.cmd
+```
+
+This stops ports `3000` / `8001` / `8080` and runs `docker compose down` (volumes kept).
+
+Full data wipe:
+
+```bat
+docker compose down -v
+```
+
+## Resume tomorrow
+
+```bat
+docker compose up -d
+scripts\run-analytics.cmd
+cd neuroflow-backend && set JAVA_HOME=C:\Java\jdk-25 && mvn -DskipTests spring-boot:run
+cd neuroflow-ui && npm run dev
+```
+
 ## Roadmap
 
 - [x] **Phase 1** — Docker Compose + multi-module scaffolding
 - [x] **Phase 2** — ClickHouse writer, Kafka consumers, simulation API
 - [x] **Phase 3** — Evidently drift engine + Spring analytics client
-- [ ] **Phase 4** — Full dashboard (live logs, drift charts, health grid)
+- [x] **Phase 4** — Next.js observability dashboard (SSE + drift charts)
 - [ ] **Phase 5** — Testcontainers + GitHub Actions CI

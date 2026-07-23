@@ -58,6 +58,7 @@ tmp/
 temp/
 .cache/
 scripts/*.log
+**/__pycache__/
 
 # Docker
 docker-data/
