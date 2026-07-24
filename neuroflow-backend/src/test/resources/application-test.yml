@@ -1,0 +1,10 @@
+neuroflow:
+  analytics:
+    drift-check-enabled: false
+    base-url: http://127.0.0.1:9
+
+logging:
+  level:
+    root: WARN
+    com.neuroflow: INFO
+    org.testcontainers: INFO

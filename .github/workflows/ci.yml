@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (Maven + Testcontainers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Run tests
+        working-directory: neuroflow-backend
+        run: mvn -B test
+
+  analytics:
+    name: Analytics (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            neuroflow-analytics/requirements.txt
+            neuroflow-analytics/requirements-dev.txt
+
+      - name: Install dependencies
+        working-directory: neuroflow-analytics
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run pytest
+        working-directory: neuroflow-analytics
+        run: pytest -q
+
+  ui:
+    name: UI (Next.js build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: neuroflow-ui/package-lock.json
+
+      - name: Install & build
+        working-directory: neuroflow-ui
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8080
+          NEXT_PUBLIC_ANALYTICS_URL: http://localhost:8001
+        run: |
+          npm ci
+          npm run build
