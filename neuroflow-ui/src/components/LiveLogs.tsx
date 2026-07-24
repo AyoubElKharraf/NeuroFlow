@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Terminal } from "lucide-react";
 import { createMockLogEvent } from "@/lib/mock-data";
 import { getSseUrl } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 import type { LiveLogEvent, LogLevel } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
@@ -15,6 +16,7 @@ interface LiveLogsProps {
 }
 
 export function LiveLogs({ onLiveChange, onMockFallback }: LiveLogsProps) {
+  const { token, isAuthenticated } = useAuth();
   const [events, setEvents] = useState<LiveLogEvent[]>([]);
   const [filter, setFilter] = useState<Filter>("ALL");
   const [usingMock, setUsingMock] = useState(false);
@@ -40,8 +42,17 @@ export function LiveLogs({ onLiveChange, onMockFallback }: LiveLogsProps) {
       }, 900);
     };
 
+    if (!isAuthenticated || !token) {
+      setEvents([]);
+      onLiveChange(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     try {
-      source = new EventSource(getSseUrl());
+      // EventSource cannot set Authorization headers — pass JWT as ?token=
+      source = new EventSource(getSseUrl(token));
       source.onopen = () => {
         if (cancelled) return;
         opened = true;
@@ -81,7 +92,7 @@ export function LiveLogs({ onLiveChange, onMockFallback }: LiveLogsProps) {
       source?.close();
       onLiveChange(false);
     };
-  }, [onLiveChange, onMockFallback]);
+  }, [isAuthenticated, token, onLiveChange, onMockFallback]);
 
   const visible = useMemo(
     () =>
@@ -121,7 +132,9 @@ export function LiveLogs({ onLiveChange, onMockFallback }: LiveLogsProps) {
       </div>
 
       <div className="h-[320px] overflow-y-auto bg-[#060a12] px-3 py-2 font-mono text-xs leading-6">
-        {visible.length === 0 ? (
+        {!isAuthenticated ? (
+          <p className="text-mute">Sign in to open the authenticated SSE stream…</p>
+        ) : visible.length === 0 ? (
           <p className="text-mute">Waiting for stream events…</p>
         ) : (
           visible.map((event) => (

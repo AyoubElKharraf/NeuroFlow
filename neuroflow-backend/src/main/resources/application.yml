@@ -76,6 +76,16 @@ neuroflow:
     drift-check-enabled: ${ANALYTICS_DRIFT_CHECK_ENABLED:true}
     drift-check-interval-ms: ${ANALYTICS_DRIFT_CHECK_INTERVAL_MS:300000}
     drift-sample-size: ${ANALYTICS_DRIFT_SAMPLE_SIZE:200}
+  security:
+    admin-username: ${NEUROFLOW_ADMIN_USERNAME:admin}
+    admin-password: ${NEUROFLOW_ADMIN_PASSWORD:admin123}
+    user-username: ${NEUROFLOW_USER_USERNAME:user}
+    user-password: ${NEUROFLOW_USER_PASSWORD:user123}
+
+# HS256 secret (>= 256-bit). Override in production via JWT_SECRET.
+jwt:
+  secret: ${JWT_SECRET:NeuroFlowDevSecretKey_ChangeMe_32charsMin!!}
+  expiration-ms: ${JWT_EXPIRATION_MS:86400000}
 
 management:
   endpoints:

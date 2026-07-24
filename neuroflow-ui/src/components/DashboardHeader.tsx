@@ -1,7 +1,8 @@
 "use client";
 
-import { Activity, Circle } from "lucide-react";
+import { Activity, Circle, LogOut } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useAuth } from "@/hooks/useAuth";
 
 interface DashboardHeaderProps {
   mockMode: boolean;
@@ -18,6 +19,8 @@ export function DashboardHeader({
   project,
   onProjectChange,
 }: DashboardHeaderProps) {
+  const { session, isAuthenticated, logout } = useAuth();
+
   return (
     <header className="flex flex-col gap-4 border-b border-line/80 pb-5 md:flex-row md:items-end md:justify-between">
       <div className="space-y-2">
@@ -51,23 +54,46 @@ export function DashboardHeader({
               MOCK MODE
             </span>
           )}
+          {isAuthenticated && session && (
+            <span className="inline-flex items-center gap-2 rounded-md border border-line bg-elevated px-2.5 py-1 font-mono text-xs text-ink">
+              {session.username}
+              <span className="text-mute">
+                {session.roles
+                  .map((role) => role.replace(/^ROLE_/, ""))
+                  .join("+")}
+              </span>
+            </span>
+          )}
         </div>
       </div>
 
-      <label className="flex flex-col gap-1 text-xs uppercase tracking-[0.14em] text-mute">
-        Project
-        <select
-          value={project}
-          onChange={(event) => onProjectChange(event.target.value)}
-          className="min-w-[220px] cursor-pointer rounded-md border border-line bg-elevated px-3 py-2 font-mono text-sm normal-case tracking-normal text-ink outline-none transition hover:border-accent/40 focus:border-accent"
-        >
-          {PROJECTS.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-xs uppercase tracking-[0.14em] text-mute">
+          Project
+          <select
+            value={project}
+            onChange={(event) => onProjectChange(event.target.value)}
+            className="min-w-[220px] cursor-pointer rounded-md border border-line bg-elevated px-3 py-2 font-mono text-sm normal-case tracking-normal text-ink outline-none transition hover:border-accent/40 focus:border-accent"
+          >
+            {PROJECTS.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {isAuthenticated && (
+          <button
+            type="button"
+            onClick={logout}
+            className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-line bg-elevated px-3 py-2 text-sm text-mute transition hover:border-danger/40 hover:text-danger"
+          >
+            <LogOut className="h-4 w-4" aria-hidden />
+            Logout
+          </button>
+        )}
+      </div>
     </header>
   );
 }

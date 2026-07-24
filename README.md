@@ -223,11 +223,12 @@ docker compose down -v
 
 Interface Next.js (thème dark) sur [http://localhost:3000](http://localhost:3000) — voir le screenshot en tête de README.
 
+- **Login JWT** (modal) : `admin` / `admin123` — token stocké en `localStorage`, injecté sur l’API et le SSE
 - KPI : événements ingérés, latence p95/p99, taux d’erreurs HTTP, statut de data drift
-- Live stream SSE (`/api/v1/alerts/stream`) avec filtres INFO / WARN / ERROR
+- Live stream SSE (`/api/v1/alerts/stream?token=…`) avec filtres INFO / WARN / ERROR
 - Graphiques de performance (volume & latence ML)
 
-> Le badge **MOCK MODE** apparaît quand certains agrégats KPI ne sont pas encore branchés sur l’API backend ; le flux **SSE LIVE** reste réel dès que le backend est up.
+> Un **401** backend efface la session et réaffiche le formulaire de connexion. Le badge **MOCK MODE** apparaît si analytics/API sont indisponibles.
 
 ---
 
@@ -262,15 +263,24 @@ curl -X POST http://localhost:8080/api/v1/analytics/drift/run
 
 ### Backend (`:8080`)
 
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
-| `GET` | `/api/v1/health` | Santé du service |
-| `POST` | `/api/v1/simulation/start` | Démarre la génération d’événements Kafka |
-| `POST` | `/api/v1/simulation/stop` | Arrête la simulation |
-| `GET` | `/api/v1/simulation/status` | État de la simulation |
-| `GET` | `/api/v1/metrics/ingestion` | Compteurs ClickHouse (telemetry / ML) |
-| `POST` | `/api/v1/analytics/drift/run` | Lance un check drift via analytics |
-| `GET` | `/api/v1/alerts/stream` | **SSE** — flux d’alertes live (dashboard) |
+| Méthode | Endpoint | Auth | Description |
+|---------|----------|------|-------------|
+| `GET` | `/api/v1/health` | public | Santé du service |
+| `POST` | `/api/v1/auth/login` | public | Login JWT (`admin`/`admin123`, `user`/`user123`) |
+| `POST` | `/api/v1/simulation/start` | **ADMIN** | Démarre la génération d’événements Kafka |
+| `POST` | `/api/v1/simulation/stop` | **ADMIN** | Arrête la simulation |
+| `GET` | `/api/v1/simulation/status` | JWT | État de la simulation |
+| `GET` | `/api/v1/metrics/ingestion` | JWT | Compteurs ClickHouse (telemetry / ML) |
+| `POST` | `/api/v1/analytics/drift/run` | JWT | Lance un check drift via analytics |
+| `GET` | `/api/v1/alerts/stream` | JWT | **SSE** — `Authorization: Bearer` ou `?token=` |
+
+Exemple login :
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/login ^
+  -H "Content-Type: application/json" ^
+  -d "{\"username\":\"admin\",\"password\":\"admin123\"}"
+```
 
 ### Analytics (`:8001`)
 

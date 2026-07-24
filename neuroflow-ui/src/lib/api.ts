@@ -4,21 +4,52 @@ import {
   MOCK_KPI,
   buildMockPerformanceSeries,
 } from "@/lib/mock-data";
+import { buildSseUrl, getStoredToken, notifyUnauthorized } from "@/lib/auth";
 import type { DriftReport, KpiSnapshot, PerformancePoint } from "@/lib/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 const ANALYTICS_URL =
   process.env.NEXT_PUBLIC_ANALYTICS_URL ?? "http://localhost:8001";
 
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+function isBackendUrl(url: string): boolean {
+  return url.startsWith(API_URL);
+}
+
+/**
+ * Centralized fetch: injects Bearer token for backend calls and
+ * clears the session on HTTP 401.
+ */
+export async function apiFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+  if (!headers.has("Content-Type") && init.body) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  if (isBackendUrl(url)) {
+    const token = getStoredToken();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+  }
+
   const response = await fetch(url, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers,
     cache: "no-store",
   });
+
+  if (response.status === 401 && isBackendUrl(url)) {
+    notifyUnauthorized();
+  }
+
+  return response;
+}
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await apiFetch(url, init);
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} for ${url}`);
   }
@@ -112,7 +143,14 @@ export async function fetchDriftReport(
         driftScore: metric.drift_score,
         driftDetected: metric.drift_detected,
         statTestName: metric.stat_test_name,
-        baselineMean: feature === "income" ? 54500 : feature === "age" ? 42 : feature === "credit_score" ? 680 : 18400,
+        baselineMean:
+          feature === "income"
+            ? 54500
+            : feature === "age"
+              ? 42
+              : feature === "credit_score"
+                ? 680
+                : 18400,
         productionMean:
           feature === "income"
             ? forceDriftedSample
@@ -153,10 +191,9 @@ export async function fetchPerformanceSeries(): Promise<{
   data: PerformancePoint[];
   mock: boolean;
 }> {
-  // No dedicated timeseries endpoint yet — mock with graceful live feel.
   return { mock: true, data: buildMockPerformanceSeries() };
 }
 
-export function getSseUrl(): string {
-  return `${API_URL}/api/v1/alerts/stream`;
+export function getSseUrl(token?: string | null): string {
+  return buildSseUrl(token);
 }
