@@ -15,6 +15,10 @@
 
 **Ingestion haute performance · Analytique instantanée · Détection de Data Drift**
 
+<br />
+
+![NeuroFlow dashboard — KPI, live SSE logs et performance](docs/dashboard.png)
+
 </div>
 
 ---
@@ -31,11 +35,12 @@ Dans les architectures distribuées modernes, détecter les goulots d’étrangl
 4. [Structure du repository](#structure-du-repository)
 5. [Prérequis](#prérequis)
 6. [Installation & démarrage](#installation--démarrage)
-7. [Inférences & analyse MLOps](#inférences--analyse-mlops)
-8. [API REST & flux SSE](#api-rest--flux-sse)
-9. [Tests & CI/CD](#tests--cicd)
-10. [Roadmap](#roadmap)
-11. [Licence](#licence)
+7. [Dashboard](#dashboard)
+8. [Inférences & analyse MLOps](#inférences--analyse-mlops)
+9. [API REST & flux SSE](#api-rest--flux-sse)
+10. [Tests & CI/CD](#tests--cicd)
+11. [Roadmap](#roadmap)
+12. [Licence](#licence)
 
 ---
 
@@ -107,6 +112,8 @@ Architecture **Event-Driven (EDA)** : faible latence, couplage faible, résilien
 
 ```text
 NeuroFlow/
+├── docs/
+│   └── dashboard.png           # Screenshot UI
 ├── docker-compose.yml          # Infra locale
 ├── docker/                     # Scripts d'init Postgres / ClickHouse
 ├── .github/workflows/ci.yml    # Pipeline CI
@@ -176,10 +183,8 @@ Dans **3 terminaux** (après infra healthy) :
 # Analytics — port 8001
 scripts\run-analytics.cmd
 
-# Backend — port 8080 (JDK 21+)
-cd neuroflow-backend
-set JAVA_HOME=C:\Java\jdk-25
-mvn -DskipTests spring-boot:run
+# Backend — port 8080 (force JDK 17+ ; évite JAVA_HOME=JDK 11)
+scripts\run-backend.cmd
 
 # UI — port 3000
 cd neuroflow-ui
@@ -202,7 +207,7 @@ scripts\stop-all.cmd
 REM Reprise
 docker compose up -d
 scripts\run-analytics.cmd
-cd neuroflow-backend && set JAVA_HOME=C:\Java\jdk-25 && mvn -DskipTests spring-boot:run
+scripts\run-backend.cmd
 cd neuroflow-ui && npm run dev
 ```
 
@@ -211,6 +216,18 @@ Wipe total des données :
 ```bash
 docker compose down -v
 ```
+
+---
+
+## Dashboard
+
+Interface Next.js (thème dark) sur [http://localhost:3000](http://localhost:3000) — voir le screenshot en tête de README.
+
+- KPI : événements ingérés, latence p95/p99, taux d’erreurs HTTP, statut de data drift
+- Live stream SSE (`/api/v1/alerts/stream`) avec filtres INFO / WARN / ERROR
+- Graphiques de performance (volume & latence ML)
+
+> Le badge **MOCK MODE** apparaît quand certains agrégats KPI ne sont pas encore branchés sur l’API backend ; le flux **SSE LIVE** reste réel dès que le backend est up.
 
 ---
 
