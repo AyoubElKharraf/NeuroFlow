@@ -13,13 +13,18 @@ public class TelemetryIngestionService {
     private static final Logger log = LoggerFactory.getLogger(TelemetryIngestionService.class);
 
     private final ClickHouseRepository clickHouseRepository;
+    private final AlertPublisherService alertPublisherService;
 
-    public TelemetryIngestionService(ClickHouseRepository clickHouseRepository) {
+    public TelemetryIngestionService(
+            ClickHouseRepository clickHouseRepository,
+            AlertPublisherService alertPublisherService) {
         this.clickHouseRepository = clickHouseRepository;
+        this.alertPublisherService = alertPublisherService;
     }
 
     public void ingestTelemetry(TelemetryEvent event) {
         clickHouseRepository.insertTelemetry(event);
+        alertPublisherService.fromTelemetry(event);
         log.info(
                 "telemetry_ingested service={} endpoint={} status={} latencyMs={}",
                 event.service(),
@@ -31,6 +36,7 @@ public class TelemetryIngestionService {
 
     public void ingestMlPrediction(MlPredictionEvent event) {
         clickHouseRepository.insertMlPrediction(event);
+        alertPublisherService.fromMlPrediction(event);
         log.info(
                 "ml_prediction_ingested model={} version={} inferenceMs={} prediction={}",
                 event.modelId(),

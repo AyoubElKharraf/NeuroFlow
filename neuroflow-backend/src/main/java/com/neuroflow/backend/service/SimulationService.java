@@ -1,15 +1,20 @@
 package com.neuroflow.backend.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.neuroflow.backend.model.MlPredictionEvent;
 import com.neuroflow.backend.model.TelemetryEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cloud.stream.function.StreamBridge;
+import org.springframework.http.MediaType;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -30,11 +35,13 @@ public class SimulationService {
     private static final int[] STATUS_CODES = {200, 200, 200, 200, 201, 400, 404, 500};
 
     private final StreamBridge streamBridge;
+    private final RestClient analyticsRestClient;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicLong emitted = new AtomicLong(0);
 
-    public SimulationService(StreamBridge streamBridge) {
+    public SimulationService(StreamBridge streamBridge, RestClient analyticsRestClient) {
         this.streamBridge = streamBridge;
+        this.analyticsRestClient = analyticsRestClient;
     }
 
     public Map<String, Object> start() {
@@ -102,23 +109,63 @@ public class SimulationService {
 
     private MlPredictionEvent randomMlPrediction() {
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
-        double confidence = rnd.nextDouble(0.55, 0.99);
         double age = clamp(rnd.nextGaussian() * 12.0 + 42.0, 18.0, 80.0);
         double income = clamp(Math.exp(rnd.nextGaussian() * 0.45 + 10.5), 15_000.0, 250_000.0);
         double creditScore = clamp(rnd.nextGaussian() * 55.0 + 680.0, 300.0, 850.0);
         double loanAmount = clamp(Math.exp(rnd.nextGaussian() * 0.55 + 9.5), 1_000.0, 150_000.0);
+
+        Map<String, Object> features = new HashMap<>();
+        features.put("age", Math.round(age * 10.0) / 10.0);
+        features.put("income", Math.round(income * 100.0) / 100.0);
+        features.put("credit_score", Math.round(creditScore * 10.0) / 10.0);
+        features.put("loan_amount", Math.round(loanAmount * 100.0) / 100.0);
+
+        String prediction = "approve";
+        double confidence = 0.7;
+        long inferenceMs = rnd.nextLong(5, 40);
+
+        try {
+            long started = System.nanoTime();
+            JsonNode response = analyticsRestClient.post()
+                    .uri("/api/v1/predict")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "age", features.get("age"),
+                            "income", features.get("income"),
+                            "credit_score", features.get("credit_score"),
+                            "loan_amount", features.get("loan_amount")
+                    ))
+                    .retrieve()
+                    .body(JsonNode.class);
+            inferenceMs = Math.max(1L, (System.nanoTime() - started) / 1_000_000L);
+            if (response != null) {
+                prediction = response.path("prediction").asText("approve");
+                confidence = response.path("confidence").asDouble(0.7);
+                String version = response.path("model_version").asText("v1.0.0");
+                features.put("confidence", confidence);
+                return new MlPredictionEvent(
+                        "loan-risk-model",
+                        version,
+                        inferenceMs,
+                        prediction,
+                        features,
+                        Instant.now()
+                );
+            }
+        } catch (RestClientException ex) {
+            log.debug("Analytics predict unavailable, using local fallback: {}", ex.getMessage());
+            confidence = rnd.nextDouble(0.55, 0.99);
+            prediction = rnd.nextBoolean() ? "approve" : "reject";
+            inferenceMs = rnd.nextLong(5, 80);
+        }
+
+        features.put("confidence", confidence);
         return new MlPredictionEvent(
                 "loan-risk-model",
                 "v1.0.0",
-                rnd.nextLong(5, 80),
-                rnd.nextBoolean() ? "approve" : "reject",
-                Map.of(
-                        "age", Math.round(age * 10.0) / 10.0,
-                        "income", Math.round(income * 100.0) / 100.0,
-                        "credit_score", Math.round(creditScore * 10.0) / 10.0,
-                        "loan_amount", Math.round(loanAmount * 100.0) / 100.0,
-                        "confidence", confidence
-                ),
+                inferenceMs,
+                prediction,
+                features,
                 Instant.now()
         );
     }

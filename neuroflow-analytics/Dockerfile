@@ -15,6 +15,7 @@ COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY app ./app
+RUN python -c "from app.services.model_service import train_and_save; print(train_and_save())"
 
 EXPOSE 8000
 

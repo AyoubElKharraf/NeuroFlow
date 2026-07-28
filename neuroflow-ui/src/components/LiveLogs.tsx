@@ -108,8 +108,10 @@ export function LiveLogs({ onLiveChange, onMockFallback }: LiveLogsProps) {
         <div className="flex items-center gap-2">
           <Terminal className="h-4 w-4 text-accent" aria-hidden />
           <h2 className="text-sm font-medium text-ink">Live Stream Panel</h2>
-          {usingMock && (
+          {usingMock ? (
             <span className="font-mono text-[11px] text-warn">mock feed</span>
+          ) : (
+            <span className="font-mono text-[11px] text-mute">kafka · alerts</span>
           )}
         </div>
         <div className="flex gap-1">

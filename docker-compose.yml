@@ -81,7 +81,7 @@ services:
       - |
         set -e
         echo "Creating NeuroFlow Kafka topics..."
-        for topic in telemetry-events app-logs ml-predictions system-metrics alerts; do
+        for topic in telemetry-events ml-predictions alerts; do
           kafka-topics --bootstrap-server kafka:29092 \
             --create --if-not-exists --topic "$$topic" --partitions 3 --replication-factor 1
         done

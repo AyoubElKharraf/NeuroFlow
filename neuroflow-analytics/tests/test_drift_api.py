@@ -62,3 +62,20 @@ def test_drift_check_detects_shifted_distribution(client: TestClient) -> None:
     body = response.json()
     assert body["dataset_drift"] is True
     assert body["number_of_drifted_features"] >= 1
+
+
+def test_predict_endpoint(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/predict",
+        json={
+            "age": 42.0,
+            "income": 54000.0,
+            "credit_score": 680.0,
+            "loan_amount": 18000.0,
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["model_name"] == "loan-risk-model"
+    assert body["prediction"] in {"approve", "reject"}
+    assert 0.0 <= body["confidence"] <= 1.0

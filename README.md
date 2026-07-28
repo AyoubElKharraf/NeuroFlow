@@ -57,28 +57,28 @@ Architecture **Event-Driven (EDA)** : faible latence, couplage faible, résilien
                     ▼                                ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   MESSAGE BROKER (Apache Kafka)                        │
-│  Topics: telemetry-events · ml-predictions · app-logs · alerts · …     │
+│  Topics: telemetry-events · ml-predictions · alerts                    │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ Spring Cloud Stream
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │            CORE BACKEND (Java 21 / Spring Boot 3.3)                    │
-│  • Ingestion concurrente                                               │
+│  • Ingestion concurrente + alertes Kafka → SSE                         │
 │  • Écriture analytique ClickHouse                                      │
-│  • Simulation d’événements + alerting SSE                              │
+│  • Auth JWT (users PostgreSQL) + simulation                            │
 └──────────────┬────────────────────┬────────────────────┬───────────────┘
                │                    │                    │
                ▼                    ▼                    ▼
-     ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-     │    ClickHouse    │  │    PostgreSQL    │  │ FastAPI + Evidently│
-     │   (analytique)   │  │  (métadonnées)   │  │   (data drift)    │
-     └──────────────────┘  └──────────────────┘  └─────────┬────────┘
-                                                           │
-                                                           ▼
-                                              ┌──────────────────────┐
-                                              │   Next.js Dashboard  │
-                                              │  KPI · logs · drift  │
-                                              └──────────────────────┘
+     ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────┐
+     │    ClickHouse    │  │    PostgreSQL    │  │ FastAPI + Evidently  │
+     │ KPI · logs · ML  │  │  users / meta    │  │ drift + predict      │
+     └──────────────────┘  └──────────────────┘  └──────────┬───────────┘
+                                                            │
+                                                            ▼
+                                               ┌──────────────────────┐
+                                               │   Next.js Dashboard  │
+                                               │  KPI · SSE · drift   │
+                                               └──────────────────────┘
 ```
 
 ---
@@ -90,8 +90,9 @@ Architecture **Event-Driven (EDA)** : faible latence, couplage faible, résilien
 | **Ingestion event-driven** | Producteurs Kafka → consommateurs Spring Cloud Stream → persistance ClickHouse |
 | **Analytique temps réel** | Compteurs d’ingestion, métriques de latence/HTTP, agrégats stockés dans ClickHouse |
 | **MLOps / Data Drift** | Comparaison production vs baseline via Evidently (FastAPI), appelée depuis le backend |
-| **Observabilité live** | Dashboard Next.js + flux SSE d’alertes (`/api/v1/alerts/stream`) |
-| **Qualité & CI** | Testcontainers (Postgres, Kafka, Redis, ClickHouse) + GitHub Actions |
+| **Observabilité live** | SSE branché sur Kafka `alerts` (erreurs HTTP, latence, drift) |
+| **ML inference** | `POST /api/v1/predict` (sklearn LogisticRegression) appelé par la simulation |
+| **Qualité & CI** | Testcontainers + pytest + Playwright smoke + GitHub Actions |
 
 ---
 
@@ -166,9 +167,9 @@ docker compose ps
 | Kafka | `9092` | Topics créés par `kafka-init` |
 | PostgreSQL | `5433` | DB `neuroflow_db` |
 | ClickHouse | `8123` / `9000` | DB `neuroflow_analytics` |
-| Redis | `6379` | Cache / rate-limit alertes |
-| Analytics | `8001` | FastAPI + Evidently |
-| Backend | `8080` | Spring Boot |
+| Redis | `6379` | Rate-limit alertes INFO |
+| Analytics | `8001` | FastAPI + Evidently + predict |
+| Backend | `8080` | Spring Boot (JWT users en Postgres) |
 | UI | `3000` | Next.js dashboard |
 
 | URL | Service |
@@ -230,9 +231,26 @@ Interface Next.js (thème dark) sur [http://localhost:3000](http://localhost:300
 - **Login JWT** (modal) : `admin` / `admin123` — token stocké en `localStorage`, injecté sur l’API et le SSE
 - **Simulation Kafka** : Start / Stop (ADMIN) + compteur d’événements émis
 - KPI : événements, latence p95/p99, taux d’erreurs HTTP, drift — **agrégés depuis ClickHouse** (`GET /api/v1/metrics/kpis`)
-- Live stream SSE (`/api/v1/alerts/stream?token=…`) avec filtres INFO / WARN / ERROR
+- Live stream SSE (`/api/v1/alerts/stream?token=…`) — **événements Kafka `alerts`** (plus de ticks aléatoires)
 - Graphiques de performance (req/min & latence inference) — **séries ClickHouse** (`GET /api/v1/metrics/performance`)
 - Drift monitor : features production lues depuis `ml_predictions` puis analysées par Evidently (`POST /api/v1/analytics/drift/run`)
+
+### Script démo entretien (~60 s)
+
+1. Ouvrir http://localhost:3000 → login `admin` / `admin123`
+2. Cliquer **Start** → badge `SIM RUNNING`, KPI/charts bougent
+3. Observer le **Live Stream** : WARN/ERROR sur 4xx/5xx (topic Kafka `alerts`)
+4. **Run Drift Check (ClickHouse)** → badge NO DRIFT / DRIFT + éventuelle alerte ERROR
+5. **Stop** → simulation idle
+
+```bash
+# e2e smoke (UI up)
+cd neuroflow-ui && npm run test:e2e
+
+# e2e avec backend (simulation Start)
+set PLAYWRIGHT_REQUIRE_BACKEND=1
+npm run test:e2e
+```
 
 > Un **401** backend efface la session et réaffiche le formulaire de connexion. Le badge **MOCK MODE** apparaît si le backend est indisponible (fallback local).
 
@@ -299,6 +317,8 @@ curl -X POST http://localhost:8080/api/v1/auth/login ^
 | `GET` | `/api/v1/drift/report-html` | Rapport Evidently HTML |
 | `GET` | `/api/v1/drift/baseline/sample` | Aperçu baseline |
 | `GET` | `/api/v1/drift/samples/production-like` | Batch sans drift (tests) |
+| `POST` | `/api/v1/predict` | Inférence `loan-risk-model` (sklearn) |
+| `GET` | `/api/v1/predict/health` | Santé du modèle |
 
 ---
 
@@ -341,6 +361,7 @@ Pipeline [`.github/workflows/ci.yml`](.github/workflows/ci.yml) sur chaque push/
 - [x] **Phase 5** — Testcontainers + GitHub Actions CI
 - [x] **Phase 6** — Brancher KPI / charts / drift UI sur agrégats ClickHouse (plus de mocks hardcodés)
 - [x] **Phase 7** — Contrôles simulation dans le dashboard + Compose full-stack (apps + infra)
+- [x] **Phase 8** — Alertes SSE ← Kafka (`alerts`) + drift ; users Postgres ; Redis rate-limit ; modèle sklearn + `/predict` ; Playwright smoke
 
 ---
 

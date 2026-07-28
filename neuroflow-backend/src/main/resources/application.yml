@@ -35,7 +35,7 @@ spring:
 
   cloud:
     function:
-      definition: telemetryConsumer;mlPredictionConsumer
+      definition: telemetryConsumer;mlPredictionConsumer;alertsConsumer
     stream:
       bindings:
         telemetryConsumer-in-0:
@@ -46,11 +46,18 @@ spring:
           destination: ml-predictions
           group: neuroflow-backend
           content-type: application/json
+        alertsConsumer-in-0:
+          destination: alerts
+          group: neuroflow-backend
+          content-type: application/json
         telemetry-events-out:
           destination: telemetry-events
           content-type: application/json
         ml-predictions-out:
           destination: ml-predictions
+          content-type: application/json
+        alerts-out:
+          destination: alerts
           content-type: application/json
       kafka:
         binder:

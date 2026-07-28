@@ -121,6 +121,61 @@ public class ClickHouseRepository {
         );
     }
 
+    public void insertAppLog(com.neuroflow.backend.model.AlertEvent event) {
+        clickHouseJdbcTemplate.update(
+                """
+                        INSERT INTO neuroflow_analytics.app_logs
+                        (log_id, service_name, level, message, trace_id, event_time)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                event.id(),
+                event.service(),
+                event.level(),
+                event.message(),
+                "",
+                toTimestamp(event.timestamp())
+        );
+    }
+
+    public void insertMetricAggregates(Map<String, Object> kpis) {
+        Instant now = Instant.now();
+        Instant windowStart = now.minusSeconds(60);
+        insertMetric(windowStart, now, "platform", "total_events", toDouble(kpis.get("totalEvents")), 1);
+        insertMetric(windowStart, now, "platform", "latency_p95_ms", toDouble(kpis.get("latencyP95Ms")), 1);
+        insertMetric(windowStart, now, "platform", "latency_p99_ms", toDouble(kpis.get("latencyP99Ms")), 1);
+        insertMetric(windowStart, now, "platform", "error_rate_pct", toDouble(kpis.get("errorRatePct")), 1);
+        insertMetric(windowStart, now, "platform", "drift_share", toDouble(kpis.get("driftShare")), 1);
+    }
+
+    private void insertMetric(
+            Instant windowStart,
+            Instant windowEnd,
+            String service,
+            String metricName,
+            double value,
+            long sampleCount) {
+        clickHouseJdbcTemplate.update(
+                """
+                        INSERT INTO neuroflow_analytics.metric_aggregates
+                        (window_start, window_end, service_name, metric_name, metric_value, sample_count)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                toTimestamp(windowStart),
+                toTimestamp(windowEnd),
+                service,
+                metricName,
+                value,
+                sampleCount
+        );
+    }
+
+    private static double toDouble(Object value) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        return 0.0;
+    }
+
     /**
      * Latency percentiles over a rolling window (minutes). Returns zeros when empty.
      */

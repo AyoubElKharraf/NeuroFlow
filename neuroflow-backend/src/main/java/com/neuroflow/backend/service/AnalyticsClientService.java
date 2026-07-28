@@ -34,6 +34,7 @@ public class AnalyticsClientService {
     private final RestClient analyticsRestClient;
     private final ClickHouseRepository clickHouseRepository;
     private final ObjectMapper objectMapper;
+    private final AlertPublisherService alertPublisherService;
     private final boolean driftCheckEnabled;
     private final int sampleSize;
     private final AtomicReference<Map<String, Object>> lastDriftSummary = new AtomicReference<>(
@@ -44,11 +45,13 @@ public class AnalyticsClientService {
             RestClient analyticsRestClient,
             ClickHouseRepository clickHouseRepository,
             ObjectMapper objectMapper,
+            AlertPublisherService alertPublisherService,
             @Value("${neuroflow.analytics.drift-check-enabled:true}") boolean driftCheckEnabled,
             @Value("${neuroflow.analytics.drift-sample-size:200}") int sampleSize) {
         this.analyticsRestClient = analyticsRestClient;
         this.clickHouseRepository = clickHouseRepository;
         this.objectMapper = objectMapper;
+        this.alertPublisherService = alertPublisherService;
         this.driftCheckEnabled = driftCheckEnabled;
         this.sampleSize = sampleSize;
     }
@@ -111,6 +114,10 @@ public class AnalyticsClientService {
             ));
 
             boolean datasetDrift = Boolean.TRUE.equals(uiReport.get("datasetDrift"));
+            double driftShare = ((Number) uiReport.getOrDefault("driftShare", 0.0)).doubleValue();
+            int driftedFeatures = ((Number) uiReport.getOrDefault("numberOfDriftedFeatures", 0)).intValue();
+            alertPublisherService.fromDrift(datasetDrift, driftShare, driftedFeatures, currentData.size());
+
             if (datasetDrift) {
                 log.warn(
                         "DATA DRIFT DETECTED ! share={}, driftedFeatures={}, sampleSize={}",
