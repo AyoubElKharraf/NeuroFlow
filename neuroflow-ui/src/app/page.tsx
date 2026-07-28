@@ -24,9 +24,8 @@ function DashboardApp() {
 
   const handleMockFallback = useCallback(() => setMockMode(true), []);
 
-  useEffect(() => {
-    if (!ready || !isAuthenticated) return;
-
+  const refreshDashboard = useCallback(() => {
+    if (!isAuthenticated) return;
     startTransition(() => {
       void (async () => {
         const [kpiResult, driftResult, perfResult] = await Promise.all([
@@ -44,7 +43,12 @@ function DashboardApp() {
         setMockMode(kpiResult.mock || driftResult.mock || perfResult.mock);
       })();
     });
-  }, [ready, isAuthenticated]);
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!ready || !isAuthenticated) return;
+    refreshDashboard();
+  }, [ready, isAuthenticated, refreshDashboard]);
 
   if (!ready) {
     return (
@@ -68,6 +72,10 @@ function DashboardApp() {
           live={live}
           project={project}
           onProjectChange={setProject}
+          onSimulationChange={() => {
+            // Give Kafka → ClickHouse a moment, then refresh KPIs/charts
+            window.setTimeout(() => refreshDashboard(), 2500);
+          }}
         />
 
         <KpiCards kpi={kpi} />

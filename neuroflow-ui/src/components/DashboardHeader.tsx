@@ -3,12 +3,15 @@
 import { Activity, Circle, LogOut } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useAuth } from "@/hooks/useAuth";
+import { SimulationControls } from "@/components/SimulationControls";
+import type { SimulationStatus } from "@/lib/types";
 
 interface DashboardHeaderProps {
   mockMode: boolean;
   live: boolean;
   project: string;
   onProjectChange: (project: string) => void;
+  onSimulationChange?: (status: SimulationStatus) => void;
 }
 
 const PROJECTS = ["neuroflow-prod", "neuroflow-staging", "loan-risk-lab"];
@@ -18,6 +21,7 @@ export function DashboardHeader({
   live,
   project,
   onProjectChange,
+  onSimulationChange,
 }: DashboardHeaderProps) {
   const { session, isAuthenticated, logout } = useAuth();
 
@@ -68,6 +72,8 @@ export function DashboardHeader({
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
+        <SimulationControls onChanged={onSimulationChange} />
+
         <label className="flex flex-col gap-1 text-xs uppercase tracking-[0.14em] text-mute">
           Project
           <select

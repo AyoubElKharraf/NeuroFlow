@@ -18,11 +18,18 @@ Optional env (defaults shown):
 set NEXT_PUBLIC_API_URL=http://localhost:8080
 ```
 
+Or via Docker Compose (full stack):
+
+```bash
+docker compose up -d --build ui
+```
+
 The dashboard talks to the **Spring backend only**. KPIs, performance charts and drift all resolve through ClickHouse via `/api/v1/metrics/*` and `/api/v1/analytics/drift/run`.
 
 ## Features
 
 - Executive KPI overview from ClickHouse (events, p95/p99, error rate, drift badge)
+- Simulation Start / Stop controls (ADMIN) with live emitted counter
 - Live SSE log stream (`/api/v1/alerts/stream`) with mock fallback
 - Drift monitor against production `ml_predictions.features_json` (Evidently via backend)
 - Performance charts (req/min + inference latency, last 30 minutes)

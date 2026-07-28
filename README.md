@@ -153,10 +153,10 @@ cd NeuroFlow
 cp .env.example .env   # Windows: Copy-Item .env.example .env
 ```
 
-### 2. Infrastructure
+### 2. Démarrage full-stack (recommandé)
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 docker compose ps
 ```
 
@@ -167,17 +167,27 @@ docker compose ps
 | PostgreSQL | `5433` | DB `neuroflow_db` |
 | ClickHouse | `8123` / `9000` | DB `neuroflow_analytics` |
 | Redis | `6379` | Cache / rate-limit alertes |
+| Analytics | `8001` | FastAPI + Evidently |
+| Backend | `8080` | Spring Boot |
+| UI | `3000` | Next.js dashboard |
 
-Smoke Kafka :
+| URL | Service |
+|-----|---------|
+| http://localhost:3000 | Dashboard |
+| http://localhost:8080/api/v1/health | Backend |
+| http://localhost:8001/health | Analytics |
+
+Dans le dashboard (login `admin` / `admin123`) : **Start** lance la simulation Kafka → ClickHouse.
+
+Infra seule (dev local des apps hors Docker) :
 
 ```bash
-# Windows
-scripts\kafka-smoke-test.cmd
+docker compose up -d zookeeper kafka kafka-init postgres clickhouse redis
 ```
 
-### 3. Services applicatifs
+### 3. Alternative : apps en local (3 terminaux)
 
-Dans **3 terminaux** (après infra healthy) :
+Après infra healthy :
 
 ```bash
 # Analytics — port 8001
@@ -192,23 +202,17 @@ npm install
 npm run dev
 ```
 
-| URL | Service |
-|-----|---------|
-| http://localhost:8080/api/v1/health | Backend |
-| http://localhost:8001/health | Analytics |
-| http://localhost:3000 | Dashboard |
-
 ### 4. Arrêt / reprise
 
 ```bat
-REM Fin de journée (volumes conservés)
+REM Stack Docker complète
+docker compose down
+
+REM Fin de journée scripts locaux (volumes conservés)
 scripts\stop-all.cmd
 
-REM Reprise
+REM Reprise full-stack
 docker compose up -d
-scripts\run-analytics.cmd
-scripts\run-backend.cmd
-cd neuroflow-ui && npm run dev
 ```
 
 Wipe total des données :
@@ -224,6 +228,7 @@ docker compose down -v
 Interface Next.js (thème dark) sur [http://localhost:3000](http://localhost:3000) — voir le screenshot en tête de README.
 
 - **Login JWT** (modal) : `admin` / `admin123` — token stocké en `localStorage`, injecté sur l’API et le SSE
+- **Simulation Kafka** : Start / Stop (ADMIN) + compteur d’événements émis
 - KPI : événements, latence p95/p99, taux d’erreurs HTTP, drift — **agrégés depuis ClickHouse** (`GET /api/v1/metrics/kpis`)
 - Live stream SSE (`/api/v1/alerts/stream?token=…`) avec filtres INFO / WARN / ERROR
 - Graphiques de performance (req/min & latence inference) — **séries ClickHouse** (`GET /api/v1/metrics/performance`)
@@ -335,6 +340,7 @@ Pipeline [`.github/workflows/ci.yml`](.github/workflows/ci.yml) sur chaque push/
 - [x] **Phase 4** — Dashboard Next.js (SSE, charts, drift)
 - [x] **Phase 5** — Testcontainers + GitHub Actions CI
 - [x] **Phase 6** — Brancher KPI / charts / drift UI sur agrégats ClickHouse (plus de mocks hardcodés)
+- [x] **Phase 7** — Contrôles simulation dans le dashboard + Compose full-stack (apps + infra)
 
 ---
 

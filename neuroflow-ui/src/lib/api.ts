@@ -4,7 +4,8 @@ import {
   buildMockPerformanceSeries,
 } from "@/lib/mock-data";
 import { buildSseUrl, getStoredToken, notifyUnauthorized } from "@/lib/auth";
-import type { DriftReport, FeatureDriftMetric, KpiSnapshot, PerformancePoint } from "@/lib/types";
+import type { DriftReport, FeatureDriftMetric, KpiSnapshot, PerformancePoint, SimulationStatus } from "@/lib/types";
+
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
@@ -160,6 +161,22 @@ export async function fetchPerformanceSeries(): Promise<{
   } catch {
     return { mock: true, data: buildMockPerformanceSeries() };
   }
+}
+
+export async function fetchSimulationStatus(): Promise<SimulationStatus> {
+  return fetchJson<SimulationStatus>(`${API_URL}/api/v1/simulation/status`);
+}
+
+export async function startSimulation(): Promise<SimulationStatus> {
+  return fetchJson<SimulationStatus>(`${API_URL}/api/v1/simulation/start`, {
+    method: "POST",
+  });
+}
+
+export async function stopSimulation(): Promise<SimulationStatus> {
+  return fetchJson<SimulationStatus>(`${API_URL}/api/v1/simulation/stop`, {
+    method: "POST",
+  });
 }
 
 export function getSseUrl(token?: string | null): string {

@@ -1,12 +1,19 @@
-# NeuroFlow — Phase 1: Local Infrastructure
-# Zookeeper + Kafka (Confluent), PostgreSQL 16, ClickHouse, Redis 7
+# NeuroFlow — full local stack
+# Infra: Zookeeper, Kafka, PostgreSQL, ClickHouse, Redis
+# Apps:  analytics (FastAPI), backend (Spring Boot), ui (Next.js)
 #
-# Host ports:
+# Host ports (defaults / .env):
 #   Kafka      → localhost:9092
 #   Zookeeper  → localhost:2181
-#   PostgreSQL → localhost:5432
+#   PostgreSQL → localhost:5433 (see .env.example)
 #   ClickHouse → localhost:8123 (HTTP) / localhost:9000 (native)
 #   Redis      → localhost:6379
+#   Analytics  → localhost:8001
+#   Backend    → localhost:8080
+#   UI         → localhost:3000
+#
+# Quick start:  docker compose up -d --build
+# Infra only:   docker compose up -d zookeeper kafka kafka-init postgres clickhouse redis
 
 name: neuroflow
 
@@ -145,6 +152,89 @@ services:
       retries: 10
     networks:
       - neuroflow-net
+
+  analytics:
+    build:
+      context: ./neuroflow-analytics
+    image: neuroflow-analytics:local
+    container_name: neuroflow-analytics
+    ports:
+      - "${ANALYTICS_PORT:-8001}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 25s
+    networks:
+      - neuroflow-net
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./neuroflow-backend
+    image: neuroflow-backend:local
+    container_name: neuroflow-backend
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      analytics:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    environment:
+      BACKEND_PORT: 8080
+      POSTGRES_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-neuroflow_db}
+      POSTGRES_USER: ${POSTGRES_USER:-neuroflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-neuroflow}
+      CLICKHOUSE_URL: jdbc:clickhouse://clickhouse:8123/${CLICKHOUSE_DB:-neuroflow_analytics}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-neuroflow}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-neuroflow}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ANALYTICS_BASE_URL: http://analytics:8000
+      ANALYTICS_DRIFT_CHECK_ENABLED: ${ANALYTICS_DRIFT_CHECK_ENABLED:-true}
+      JWT_SECRET: ${JWT_SECRET:-NeuroFlowDevSecretKey_ChangeMe_32charsMin!!}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
+      NEUROFLOW_ADMIN_USERNAME: ${NEUROFLOW_ADMIN_USERNAME:-admin}
+      NEUROFLOW_ADMIN_PASSWORD: ${NEUROFLOW_ADMIN_PASSWORD:-admin123}
+      NEUROFLOW_USER_USERNAME: ${NEUROFLOW_USER_USERNAME:-user}
+      NEUROFLOW_USER_PASSWORD: ${NEUROFLOW_USER_PASSWORD:-user123}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/v1/health"]
+      interval: 20s
+      timeout: 8s
+      retries: 12
+      start_period: 75s
+    networks:
+      - neuroflow-net
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./neuroflow-ui
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    image: neuroflow-ui:local
+    container_name: neuroflow-ui
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${UI_PORT:-3000}:3000"
+    environment:
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    networks:
+      - neuroflow-net
+    restart: unless-stopped
 
 volumes:
   zookeeper_data:

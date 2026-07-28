@@ -41,3 +41,9 @@ export interface PerformancePoint {
   requestsPerMin: number;
   inferenceLatencyMs: number;
 }
+
+export interface SimulationStatus {
+  running: boolean;
+  emitted: number;
+  targetRatePerSec: number;
+}
