@@ -3,8 +3,10 @@ package com.neuroflow.backend.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.neuroflow.backend.model.MlPredictionEvent;
 import com.neuroflow.backend.model.TelemetryEvent;
+import io.micrometer.core.instrument.Counter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cloud.stream.function.StreamBridge;
 import org.springframework.http.MediaType;
 import org.springframework.messaging.support.MessageBuilder;
@@ -36,12 +38,17 @@ public class SimulationService {
 
     private final StreamBridge streamBridge;
     private final RestClient analyticsRestClient;
+    private final Counter simulationEmittedCounter;
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private final AtomicLong emitted = new AtomicLong(0);
+    private final AtomicLong emitted = new AtomicLong();
 
-    public SimulationService(StreamBridge streamBridge, RestClient analyticsRestClient) {
+    public SimulationService(
+            StreamBridge streamBridge,
+            RestClient analyticsRestClient,
+            @Qualifier("simulationEmittedCounter") Counter simulationEmittedCounter) {
         this.streamBridge = streamBridge;
         this.analyticsRestClient = analyticsRestClient;
+        this.simulationEmittedCounter = simulationEmittedCounter;
     }
 
     public Map<String, Object> start() {
@@ -79,6 +86,7 @@ public class SimulationService {
         );
         if (sent) {
             emitted.incrementAndGet();
+            simulationEmittedCounter.increment();
         } else {
             log.warn("Failed to publish telemetry event to Kafka");
         }

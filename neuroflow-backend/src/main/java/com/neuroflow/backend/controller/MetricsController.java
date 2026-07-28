@@ -1,6 +1,7 @@
 package com.neuroflow.backend.controller;
 
 import com.neuroflow.backend.service.MetricsService;
+import com.neuroflow.backend.service.RuntimeMetricsService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -13,9 +14,13 @@ import java.util.Map;
 public class MetricsController {
 
     private final MetricsService metricsService;
+    private final RuntimeMetricsService runtimeMetricsService;
 
-    public MetricsController(MetricsService metricsService) {
+    public MetricsController(
+            MetricsService metricsService,
+            RuntimeMetricsService runtimeMetricsService) {
         this.metricsService = metricsService;
+        this.runtimeMetricsService = runtimeMetricsService;
     }
 
     @GetMapping("/ingestion")
@@ -32,5 +37,10 @@ public class MetricsController {
     public Map<String, Object> performance(
             @RequestParam(name = "minutes", defaultValue = "30") int minutes) {
         return metricsService.getPerformanceSeries(minutes);
+    }
+
+    @GetMapping("/runtime")
+    public Map<String, Object> runtime() {
+        return runtimeMetricsService.snapshot();
     }
 }

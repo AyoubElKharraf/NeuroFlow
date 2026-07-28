@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
+import { ActuatorMetricsPanel } from "@/components/ActuatorMetricsPanel";
 import { DashboardHeader } from "@/components/DashboardHeader";
+import { DriftHistoryTimeline } from "@/components/DriftHistoryTimeline";
 import { DriftMonitor } from "@/components/DriftMonitor";
 import { KpiCards } from "@/components/KpiCards";
 import { LiveLogs } from "@/components/LiveLogs";
@@ -11,7 +13,6 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { fetchDriftReport, fetchKpis, fetchPerformanceSeries } from "@/lib/api";
 import { MOCK_DRIFT_OK, MOCK_KPI } from "@/lib/mock-data";
 import type { DriftReport, KpiSnapshot, PerformancePoint } from "@/lib/types";
-import { DriftHistoryTimeline } from "@/components/DriftHistoryTimeline";
 
 function DashboardApp() {
   const { ready, isAuthenticated } = useAuth();
@@ -82,6 +83,8 @@ function DashboardApp() {
         />
 
         <KpiCards kpi={kpi} />
+
+        <ActuatorMetricsPanel />
 
         <div className="grid gap-4 xl:grid-cols-2">
           <LiveLogs onLiveChange={setLive} onMockFallback={handleMockFallback} />

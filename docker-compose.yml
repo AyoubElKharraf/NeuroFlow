@@ -11,6 +11,7 @@
 #   Analytics  → localhost:8001
 #   Backend    → localhost:8080
 #   UI         → localhost:3000
+#   Prometheus → localhost:9090
 #
 # Quick start:  docker compose up -d --build
 # Infra only:   docker compose up -d zookeeper kafka kafka-init postgres clickhouse redis
@@ -207,6 +208,10 @@ services:
       NEUROFLOW_ADMIN_PASSWORD: ${NEUROFLOW_ADMIN_PASSWORD:-admin123}
       NEUROFLOW_USER_USERNAME: ${NEUROFLOW_USER_USERNAME:-user}
       NEUROFLOW_USER_PASSWORD: ${NEUROFLOW_USER_PASSWORD:-user123}
+      WEBHOOKS_ENABLED: ${WEBHOOKS_ENABLED:-true}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      WEBHOOK_COOLDOWN_SECONDS: ${WEBHOOK_COOLDOWN_SECONDS:-300}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/v1/health"]
       interval: 20s
@@ -236,6 +241,25 @@ services:
       - neuroflow-net
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: neuroflow-prometheus
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    networks:
+      - neuroflow-net
+    restart: unless-stopped
+
 volumes:
   zookeeper_data:
   zookeeper_log:
@@ -243,6 +267,7 @@ volumes:
   postgres_data:
   clickhouse_data:
   redis_data:
+  prometheus_data:
 
 networks:
   neuroflow-net:

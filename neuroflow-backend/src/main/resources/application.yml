@@ -83,6 +83,11 @@ neuroflow:
     drift-check-enabled: ${ANALYTICS_DRIFT_CHECK_ENABLED:true}
     drift-check-interval-ms: ${ANALYTICS_DRIFT_CHECK_INTERVAL_MS:300000}
     drift-sample-size: ${ANALYTICS_DRIFT_SAMPLE_SIZE:200}
+  webhooks:
+    enabled: ${WEBHOOKS_ENABLED:true}
+    slack-url: ${SLACK_WEBHOOK_URL:}
+    discord-url: ${DISCORD_WEBHOOK_URL:}
+    cooldown-seconds: ${WEBHOOK_COOLDOWN_SECONDS:300}
   security:
     admin-username: ${NEUROFLOW_ADMIN_USERNAME:admin}
     admin-password: ${NEUROFLOW_ADMIN_PASSWORD:admin123}
@@ -98,10 +103,18 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: when_authorized
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
 
 logging:
   level:

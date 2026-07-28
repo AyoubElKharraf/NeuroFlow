@@ -59,3 +59,28 @@ export interface DriftHistoryPoint {
   triggerSource: string;
   checkedAt: string;
 }
+
+export interface RuntimeMetrics {
+  source: string;
+  prometheusPath: string;
+  jvm: {
+    heapUsedMb: number;
+    heapMaxMb: number;
+    heapUsagePct: number;
+    threadsLive: number;
+    cpuProcessPct: number;
+    cpuSystemPct: number;
+    uptimeSec: number;
+  };
+  http: {
+    requestCount: number;
+    meanLatencyMs: number;
+    maxLatencyMs: number;
+  };
+  neuroflow: {
+    alertsPublished: number;
+    simulationEmitted: number;
+    driftChecks: number;
+    driftDetected: number;
+  };
+}

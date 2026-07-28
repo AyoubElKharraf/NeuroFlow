@@ -4,8 +4,10 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.neuroflow.backend.repository.ClickHouseRepository;
+import io.micrometer.core.instrument.Counter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -35,6 +37,9 @@ public class AnalyticsClientService {
     private final ClickHouseRepository clickHouseRepository;
     private final ObjectMapper objectMapper;
     private final AlertPublisherService alertPublisherService;
+    private final WebhookNotificationService webhookNotificationService;
+    private final Counter driftChecksCounter;
+    private final Counter driftDetectedCounter;
     private final boolean driftCheckEnabled;
     private final int sampleSize;
     private final AtomicReference<Map<String, Object>> lastDriftSummary = new AtomicReference<>(
@@ -46,12 +51,18 @@ public class AnalyticsClientService {
             ClickHouseRepository clickHouseRepository,
             ObjectMapper objectMapper,
             AlertPublisherService alertPublisherService,
+            WebhookNotificationService webhookNotificationService,
+            @Qualifier("driftChecksCounter") Counter driftChecksCounter,
+            @Qualifier("driftDetectedCounter") Counter driftDetectedCounter,
             @Value("${neuroflow.analytics.drift-check-enabled:true}") boolean driftCheckEnabled,
             @Value("${neuroflow.analytics.drift-sample-size:200}") int sampleSize) {
         this.analyticsRestClient = analyticsRestClient;
         this.clickHouseRepository = clickHouseRepository;
         this.objectMapper = objectMapper;
         this.alertPublisherService = alertPublisherService;
+        this.webhookNotificationService = webhookNotificationService;
+        this.driftChecksCounter = driftChecksCounter;
+        this.driftDetectedCounter = driftDetectedCounter;
         this.driftCheckEnabled = driftCheckEnabled;
         this.sampleSize = sampleSize;
     }
@@ -112,6 +123,7 @@ public class AnalyticsClientService {
             }
 
             Map<String, Object> uiReport = toUiDriftReport(response, currentData.size());
+            driftChecksCounter.increment();
             lastDriftSummary.set(Map.of(
                     "datasetDrift", uiReport.get("datasetDrift"),
                     "driftShare", uiReport.get("driftShare")
@@ -124,6 +136,14 @@ public class AnalyticsClientService {
             persistDriftHistory(uiReport, triggerSource);
 
             if (datasetDrift) {
+                driftDetectedCounter.increment();
+                webhookNotificationService.notifyDriftDetected(
+                        String.valueOf(uiReport.getOrDefault("modelName", "loan-risk-model")),
+                        driftShare,
+                        driftedFeatures,
+                        currentData.size(),
+                        triggerSource
+                );
                 log.warn(
                         "DATA DRIFT DETECTED ! share={}, driftedFeatures={}, sampleSize={}",
                         uiReport.get("driftShare"),

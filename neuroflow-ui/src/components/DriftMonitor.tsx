@@ -11,8 +11,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { RefreshCw } from "lucide-react";
-import { fetchDriftReport } from "@/lib/api";
+import { BellRing, RefreshCw } from "lucide-react";
+import {
+  fetchDriftReport,
+  fetchWebhookStatus,
+  testWebhooks,
+  type WebhookStatus,
+} from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 import type { DriftReport } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
@@ -22,13 +28,27 @@ interface DriftMonitorProps {
 }
 
 export function DriftMonitor({ initial, onReport }: DriftMonitorProps) {
+  const { isAdmin } = useAuth();
   const [report, setReport] = useState(initial);
   const [loading, setLoading] = useState(false);
+  const [webhookBusy, setWebhookBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [webhookNote, setWebhookNote] = useState<string | null>(null);
+  const [webhooks, setWebhooks] = useState<WebhookStatus | null>(null);
 
   useEffect(() => {
     setReport(initial);
   }, [initial]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setWebhooks(await fetchWebhookStatus());
+      } catch {
+        setWebhooks(null);
+      }
+    })();
+  }, []);
 
   const chartData = report.features.map((feature) => ({
     feature: feature.feature,
@@ -50,6 +70,45 @@ export function DriftMonitor({ initial, onReport }: DriftMonitorProps) {
     }
   }
 
+  async function runWebhookTest() {
+    if (!isAdmin || webhookBusy) return;
+    setWebhookBusy(true);
+    setWebhookNote(null);
+    try {
+      const result = await testWebhooks();
+      setWebhooks({
+        enabled: result.enabled,
+        slackConfigured: result.slackConfigured,
+        discordConfigured: result.discordConfigured,
+        cooldownSeconds: result.cooldownSeconds,
+      });
+      if (result.sent) {
+        setWebhookNote(
+          `Test sent · slack=${result.slackSent ? "ok" : "skip"} · discord=${result.discordSent ? "ok" : "skip"}`,
+        );
+      } else {
+        setWebhookNote(result.reason ?? "No webhook delivered");
+      }
+    } catch (err) {
+      setWebhookNote(err instanceof Error ? err.message : "Webhook test failed");
+    } finally {
+      setWebhookBusy(false);
+    }
+  }
+
+  const webhookLabel = !webhooks
+    ? "webhooks ?"
+    : !webhooks.enabled
+      ? "webhooks off"
+      : webhooks.slackConfigured || webhooks.discordConfigured
+        ? [
+            webhooks.slackConfigured ? "Slack" : null,
+            webhooks.discordConfigured ? "Discord" : null,
+          ]
+            .filter(Boolean)
+            .join("+")
+        : "webhooks unset";
+
   return (
     <section className="rounded-xl border border-line bg-panel/90 p-4 shadow-glow">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -62,7 +121,18 @@ export function DriftMonitor({ initial, onReport }: DriftMonitorProps) {
               : ` · ${report.features.length} features`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {isAdmin && (
+            <button
+              type="button"
+              disabled={webhookBusy}
+              onClick={() => void runWebhookTest()}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-line bg-elevated px-3 py-2 text-xs font-medium text-mute transition hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <BellRing className={cn("h-3.5 w-3.5", webhookBusy && "animate-pulse")} />
+              Test Webhook
+            </button>
+          )}
           <button
             type="button"
             disabled={loading}
@@ -92,9 +162,13 @@ export function DriftMonitor({ initial, onReport }: DriftMonitorProps) {
         <span className="rounded-md border border-line bg-elevated px-2.5 py-1 font-mono text-xs text-mute">
           drifted={report.numberOfDriftedFeatures}
         </span>
+        <span className="rounded-md border border-line bg-elevated px-2.5 py-1 font-mono text-xs text-mute">
+          {webhookLabel}
+        </span>
       </div>
 
       {error && <p className="mb-3 text-xs text-danger">{error}</p>}
+      {webhookNote && <p className="mb-3 text-xs text-mute">{webhookNote}</p>}
 
       <div className="mb-5 overflow-x-auto">
         <table className="min-w-full text-left text-xs">

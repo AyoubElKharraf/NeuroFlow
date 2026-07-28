@@ -171,6 +171,7 @@ docker compose ps
 | Analytics | `8001` | FastAPI + Evidently + predict |
 | Backend | `8080` | Spring Boot (JWT users en Postgres) |
 | UI | `3000` | Next.js dashboard |
+| Prometheus | `9090` | Scrape `/actuator/prometheus` |
 
 | URL | Service |
 |-----|---------|
@@ -235,6 +236,24 @@ Interface Next.js (thème dark) sur [http://localhost:3000](http://localhost:300
 - Graphiques de performance (req/min & latence inference) — **séries ClickHouse** (`GET /api/v1/metrics/performance`)
 - Drift monitor : features production lues depuis `ml_predictions` puis analysées par Evidently (`POST /api/v1/analytics/drift/run`)
 - **Drift history** : timeline ClickHouse (`drift_history`) + courbe share %
+- **Webhooks** : Slack / Discord notifiés quand un dataset drift est détecté (cooldown Redis)
+- **Actuator / Prometheus** : heap, CPU, HTTP latency, compteurs custom + scrape `:9090`
+
+### Webhooks Slack / Discord
+
+1. Créer un Incoming Webhook Slack et/ou Discord
+2. Renseigner dans `.env` :
+
+```bash
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/.../...
+WEBHOOK_COOLDOWN_SECONDS=300
+```
+
+3. Redémarrer le backend (ou `docker compose up -d backend`)
+4. Dashboard (admin) → **Test Webhook**, ou attendre un vrai drift
+
+Sans URL configurée, le service reste silencieux (pas d’erreur).
 
 ### Script démo entretien (~60 s)
 
@@ -298,8 +317,12 @@ curl -X POST http://localhost:8080/api/v1/analytics/drift/run
 | `GET` | `/api/v1/metrics/ingestion` | JWT | Compteurs ClickHouse (telemetry / ML) |
 | `GET` | `/api/v1/metrics/kpis` | JWT | KPI dashboard (p95/p99, error rate, trend) depuis ClickHouse |
 | `GET` | `/api/v1/metrics/performance?minutes=30` | JWT | Série req/min + latence inference (agrégats ClickHouse) |
+| `GET` | `/api/v1/metrics/runtime` | JWT | Snapshot Micrometer (JVM/HTTP/compteurs NeuroFlow) |
+| `GET` | `/actuator/prometheus` | public | Exposition Prometheus scrape |
 | `POST` | `/api/v1/analytics/drift/run` | JWT | Drift Evidently sur `features_json` ClickHouse (+ persist historique) |
 | `GET` | `/api/v1/analytics/drift/history?limit=30` | JWT | Timeline des checks drift (ClickHouse `drift_history`) |
+| `GET` | `/api/v1/analytics/webhooks/status` | JWT | Slack/Discord configurés ? |
+| `POST` | `/api/v1/analytics/webhooks/test` | **ADMIN** | Envoie un message test (ignore le cooldown) |
 | `GET` | `/api/v1/alerts/stream` | JWT | **SSE** — `Authorization: Bearer` ou `?token=` |
 
 Exemple login :
@@ -365,6 +388,8 @@ Pipeline [`.github/workflows/ci.yml`](.github/workflows/ci.yml) sur chaque push/
 - [x] **Phase 7** — Contrôles simulation dans le dashboard + Compose full-stack (apps + infra)
 - [x] **Phase 8** — Alertes SSE ← Kafka (`alerts`) + drift ; users Postgres ; Redis rate-limit ; modèle sklearn + `/predict` ; Playwright smoke
 - [x] **Phase 9** — Historique drift (ClickHouse `drift_history` + timeline UI)
+- [x] **Phase 10** — Webhooks Slack/Discord sur détection de data drift
+- [x] **Phase 11** — Actuator + Prometheus (dashboard runtime + scrape Compose)
 
 ---
 

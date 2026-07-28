@@ -10,6 +10,7 @@ import type {
   FeatureDriftMetric,
   KpiSnapshot,
   PerformancePoint,
+  RuntimeMetrics,
   SimulationStatus,
 } from "@/lib/types";
 
@@ -184,6 +185,46 @@ export async function fetchPerformanceSeries(): Promise<{
   }
 }
 
+export async function fetchRuntimeMetrics(): Promise<{
+  data: RuntimeMetrics;
+  mock: boolean;
+}> {
+  try {
+    const data = await fetchJson<RuntimeMetrics>(
+      `${API_URL}/api/v1/metrics/runtime`,
+    );
+    return { mock: false, data };
+  } catch {
+    return {
+      mock: true,
+      data: {
+        source: "mock",
+        prometheusPath: "/actuator/prometheus",
+        jvm: {
+          heapUsedMb: 256,
+          heapMaxMb: 512,
+          heapUsagePct: 50,
+          threadsLive: 42,
+          cpuProcessPct: 8,
+          cpuSystemPct: 12,
+          uptimeSec: 3600,
+        },
+        http: {
+          requestCount: 0,
+          meanLatencyMs: 0,
+          maxLatencyMs: 0,
+        },
+        neuroflow: {
+          alertsPublished: 0,
+          simulationEmitted: 0,
+          driftChecks: 0,
+          driftDetected: 0,
+        },
+      },
+    };
+  }
+}
+
 export async function fetchSimulationStatus(): Promise<SimulationStatus> {
   return fetchJson<SimulationStatus>(`${API_URL}/api/v1/simulation/status`);
 }
@@ -198,6 +239,23 @@ export async function stopSimulation(): Promise<SimulationStatus> {
   return fetchJson<SimulationStatus>(`${API_URL}/api/v1/simulation/stop`, {
     method: "POST",
   });
+}
+
+export type WebhookStatus = {
+  enabled: boolean;
+  slackConfigured: boolean;
+  discordConfigured: boolean;
+  cooldownSeconds: number;
+};
+
+export async function fetchWebhookStatus(): Promise<WebhookStatus> {
+  return fetchJson<WebhookStatus>(`${API_URL}/api/v1/analytics/webhooks/status`);
+}
+
+export async function testWebhooks(): Promise<
+  WebhookStatus & { sent: boolean; reason?: string; slackSent?: boolean; discordSent?: boolean }
+> {
+  return fetchJson(`${API_URL}/api/v1/analytics/webhooks/test`, { method: "POST" });
 }
 
 export function getSseUrl(token?: string | null): string {

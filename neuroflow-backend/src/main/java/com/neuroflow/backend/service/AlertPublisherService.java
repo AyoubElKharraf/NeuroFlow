@@ -4,8 +4,10 @@ import com.neuroflow.backend.model.AlertEvent;
 import com.neuroflow.backend.model.MlPredictionEvent;
 import com.neuroflow.backend.model.TelemetryEvent;
 import com.neuroflow.backend.repository.ClickHouseRepository;
+import io.micrometer.core.instrument.Counter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cloud.stream.function.StreamBridge;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.support.MessageBuilder;
@@ -28,15 +30,18 @@ public class AlertPublisherService {
     private final StreamBridge streamBridge;
     private final ClickHouseRepository clickHouseRepository;
     private final StringRedisTemplate redisTemplate;
+    private final Counter alertsPublishedCounter;
     private final AtomicLong infoCounter = new AtomicLong();
 
     public AlertPublisherService(
             StreamBridge streamBridge,
             ClickHouseRepository clickHouseRepository,
-            StringRedisTemplate redisTemplate) {
+            StringRedisTemplate redisTemplate,
+            @Qualifier("alertsPublishedCounter") Counter alertsPublishedCounter) {
         this.streamBridge = streamBridge;
         this.clickHouseRepository = clickHouseRepository;
         this.redisTemplate = redisTemplate;
+        this.alertsPublishedCounter = alertsPublishedCounter;
     }
 
     public void publish(AlertEvent event) {
@@ -56,6 +61,7 @@ public class AlertPublisherService {
             log.warn("Failed to publish alert to Kafka service={} level={}", event.service(), event.level());
             return;
         }
+        alertsPublishedCounter.increment();
         try {
             clickHouseRepository.insertAppLog(event);
         } catch (Exception ex) {
