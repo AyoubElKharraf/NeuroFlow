@@ -234,6 +234,7 @@ Interface Next.js (thème dark) sur [http://localhost:3000](http://localhost:300
 - Live stream SSE (`/api/v1/alerts/stream?token=…`) — **événements Kafka `alerts`** (plus de ticks aléatoires)
 - Graphiques de performance (req/min & latence inference) — **séries ClickHouse** (`GET /api/v1/metrics/performance`)
 - Drift monitor : features production lues depuis `ml_predictions` puis analysées par Evidently (`POST /api/v1/analytics/drift/run`)
+- **Drift history** : timeline ClickHouse (`drift_history`) + courbe share %
 
 ### Script démo entretien (~60 s)
 
@@ -297,7 +298,8 @@ curl -X POST http://localhost:8080/api/v1/analytics/drift/run
 | `GET` | `/api/v1/metrics/ingestion` | JWT | Compteurs ClickHouse (telemetry / ML) |
 | `GET` | `/api/v1/metrics/kpis` | JWT | KPI dashboard (p95/p99, error rate, trend) depuis ClickHouse |
 | `GET` | `/api/v1/metrics/performance?minutes=30` | JWT | Série req/min + latence inference (agrégats ClickHouse) |
-| `POST` | `/api/v1/analytics/drift/run` | JWT | Drift Evidently sur `features_json` ClickHouse |
+| `POST` | `/api/v1/analytics/drift/run` | JWT | Drift Evidently sur `features_json` ClickHouse (+ persist historique) |
+| `GET` | `/api/v1/analytics/drift/history?limit=30` | JWT | Timeline des checks drift (ClickHouse `drift_history`) |
 | `GET` | `/api/v1/alerts/stream` | JWT | **SSE** — `Authorization: Bearer` ou `?token=` |
 
 Exemple login :
@@ -362,6 +364,7 @@ Pipeline [`.github/workflows/ci.yml`](.github/workflows/ci.yml) sur chaque push/
 - [x] **Phase 6** — Brancher KPI / charts / drift UI sur agrégats ClickHouse (plus de mocks hardcodés)
 - [x] **Phase 7** — Contrôles simulation dans le dashboard + Compose full-stack (apps + infra)
 - [x] **Phase 8** — Alertes SSE ← Kafka (`alerts`) + drift ; users Postgres ; Redis rate-limit ; modèle sklearn + `/predict` ; Playwright smoke
+- [x] **Phase 9** — Historique drift (ClickHouse `drift_history` + timeline UI)
 
 ---
 

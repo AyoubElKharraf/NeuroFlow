@@ -47,3 +47,15 @@ export interface SimulationStatus {
   emitted: number;
   targetRatePerSec: number;
 }
+
+export interface DriftHistoryPoint {
+  checkId: string;
+  modelName: string;
+  datasetDrift: boolean;
+  driftShare: number;
+  numberOfDriftedFeatures: number;
+  sampleSize: number;
+  message: string;
+  triggerSource: string;
+  checkedAt: string;
+}

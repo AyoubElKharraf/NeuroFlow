@@ -4,7 +4,15 @@ import {
   buildMockPerformanceSeries,
 } from "@/lib/mock-data";
 import { buildSseUrl, getStoredToken, notifyUnauthorized } from "@/lib/auth";
-import type { DriftReport, FeatureDriftMetric, KpiSnapshot, PerformancePoint, SimulationStatus } from "@/lib/types";
+import type {
+  DriftHistoryPoint,
+  DriftReport,
+  FeatureDriftMetric,
+  KpiSnapshot,
+  PerformancePoint,
+  SimulationStatus,
+} from "@/lib/types";
+
 
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -142,6 +150,19 @@ export async function fetchDriftReport(): Promise<{
     };
   } catch {
     return { mock: true, data: MOCK_DRIFT_OK };
+  }
+}
+
+export async function fetchDriftHistory(
+  limit = 30,
+): Promise<{ data: DriftHistoryPoint[]; mock: boolean }> {
+  try {
+    const payload = await fetchJson<{
+      history: DriftHistoryPoint[];
+    }>(`${API_URL}/api/v1/analytics/drift/history?limit=${limit}`);
+    return { mock: false, data: payload.history ?? [] };
+  } catch {
+    return { mock: true, data: [] };
   }
 }
 

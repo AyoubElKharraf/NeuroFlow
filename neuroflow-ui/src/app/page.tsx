@@ -11,6 +11,7 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { fetchDriftReport, fetchKpis, fetchPerformanceSeries } from "@/lib/api";
 import { MOCK_DRIFT_OK, MOCK_KPI } from "@/lib/mock-data";
 import type { DriftReport, KpiSnapshot, PerformancePoint } from "@/lib/types";
+import { DriftHistoryTimeline } from "@/components/DriftHistoryTimeline";
 
 function DashboardApp() {
   const { ready, isAuthenticated } = useAuth();
@@ -20,6 +21,7 @@ function DashboardApp() {
   const [kpi, setKpi] = useState<KpiSnapshot>(MOCK_KPI);
   const [drift, setDrift] = useState<DriftReport>(MOCK_DRIFT_OK);
   const [series, setSeries] = useState<PerformancePoint[]>([]);
+  const [historyKey, setHistoryKey] = useState(0);
   const [, startTransition] = useTransition();
 
   const handleMockFallback = useCallback(() => setMockMode(true), []);
@@ -41,6 +43,7 @@ function DashboardApp() {
         setDrift(driftResult.data);
         setSeries(perfResult.data);
         setMockMode(kpiResult.mock || driftResult.mock || perfResult.mock);
+        setHistoryKey((key) => key + 1);
       })();
     });
   }, [isAuthenticated]);
@@ -85,19 +88,23 @@ function DashboardApp() {
           <PerformanceCharts series={series} />
         </div>
 
-        <DriftMonitor
-          initial={drift}
-          onReport={(report, mock) => {
-            setDrift(report);
-            setKpi((prev) => ({
-              ...prev,
-              datasetDrift: report.datasetDrift,
-              driftShare: report.driftShare,
-            }));
-            if (mock) setMockMode(true);
-            else setMockMode(false);
-          }}
-        />
+        <div className="grid gap-4 xl:grid-cols-2">
+          <DriftMonitor
+            initial={drift}
+            onReport={(report, mock) => {
+              setDrift(report);
+              setKpi((prev) => ({
+                ...prev,
+                datasetDrift: report.datasetDrift,
+                driftShare: report.driftShare,
+              }));
+              setHistoryKey((key) => key + 1);
+              if (mock) setMockMode(true);
+              else setMockMode(false);
+            }}
+          />
+          <DriftHistoryTimeline refreshKey={historyKey} />
+        </div>
       </main>
     </>
   );

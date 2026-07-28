@@ -66,13 +66,17 @@ public class AnalyticsClientService {
             return;
         }
         try {
-            runDriftCheck();
+            runDriftCheck("scheduled");
         } catch (Exception ex) {
             log.warn("Drift check skipped (analytics unavailable or error): {}", ex.getMessage());
         }
     }
 
     public Map<String, Object> runDriftCheck() {
+        return runDriftCheck("manual");
+    }
+
+    public Map<String, Object> runDriftCheck(String triggerSource) {
         List<Map<String, Object>> currentData = loadCurrentFeatureRows();
         if (currentData.isEmpty()) {
             log.debug("No ML feature rows available for drift check yet");
@@ -117,6 +121,7 @@ public class AnalyticsClientService {
             double driftShare = ((Number) uiReport.getOrDefault("driftShare", 0.0)).doubleValue();
             int driftedFeatures = ((Number) uiReport.getOrDefault("numberOfDriftedFeatures", 0)).intValue();
             alertPublisherService.fromDrift(datasetDrift, driftShare, driftedFeatures, currentData.size());
+            persistDriftHistory(uiReport, triggerSource);
 
             if (datasetDrift) {
                 log.warn(
@@ -143,6 +148,33 @@ public class AnalyticsClientService {
                     "status", "ANALYTICS_DOWN",
                     "error", ex.getMessage() == null ? "unknown" : ex.getMessage()
             );
+        }
+    }
+
+    public Map<String, Object> driftHistory(int limit) {
+        List<Map<String, Object>> history = clickHouseRepository.fetchDriftHistory(limit);
+        return Map.of(
+                "source", "clickhouse",
+                "count", history.size(),
+                "history", history
+        );
+    }
+
+    private void persistDriftHistory(Map<String, Object> uiReport, String triggerSource) {
+        try {
+            String featuresJson = objectMapper.writeValueAsString(uiReport.getOrDefault("features", List.of()));
+            clickHouseRepository.insertDriftHistory(
+                    String.valueOf(uiReport.getOrDefault("modelName", "loan-risk-model")),
+                    Boolean.TRUE.equals(uiReport.get("datasetDrift")),
+                    ((Number) uiReport.getOrDefault("driftShare", 0.0)).doubleValue(),
+                    ((Number) uiReport.getOrDefault("numberOfDriftedFeatures", 0)).intValue(),
+                    ((Number) uiReport.getOrDefault("sampleSize", 0)).intValue(),
+                    String.valueOf(uiReport.getOrDefault("message", "")),
+                    featuresJson,
+                    triggerSource
+            );
+        } catch (Exception ex) {
+            log.warn("Failed to persist drift history: {}", ex.getMessage());
         }
     }
 

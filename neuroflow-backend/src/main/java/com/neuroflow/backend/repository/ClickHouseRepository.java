@@ -147,6 +147,99 @@ public class ClickHouseRepository {
         insertMetric(windowStart, now, "platform", "drift_share", toDouble(kpis.get("driftShare")), 1);
     }
 
+    public void ensureDriftHistoryTable() {
+        clickHouseJdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS neuroflow_analytics.drift_history
+                (
+                    check_id                    String,
+                    model_name                  LowCardinality(String),
+                    dataset_drift               UInt8,
+                    drift_share                 Float64,
+                    number_of_drifted_features  UInt16,
+                    sample_size                 UInt32,
+                    message                     String,
+                    features_json               String,
+                    trigger_source              LowCardinality(String),
+                    checked_at                  DateTime64(3, 'UTC'),
+                    ingested_at                 DateTime64(3, 'UTC') DEFAULT now64(3)
+                )
+                ENGINE = MergeTree
+                PARTITION BY toYYYYMMDD(checked_at)
+                ORDER BY (model_name, checked_at)
+                """);
+    }
+
+    public void insertDriftHistory(
+            String modelName,
+            boolean datasetDrift,
+            double driftShare,
+            int driftedFeatures,
+            int sampleSize,
+            String message,
+            String featuresJson,
+            String triggerSource) {
+        ensureDriftHistoryTable();
+        clickHouseJdbcTemplate.update(
+                """
+                        INSERT INTO neuroflow_analytics.drift_history
+                        (check_id, model_name, dataset_drift, drift_share, number_of_drifted_features,
+                         sample_size, message, features_json, trigger_source, checked_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                UUID.randomUUID().toString(),
+                modelName == null ? "loan-risk-model" : modelName,
+                datasetDrift ? 1 : 0,
+                driftShare,
+                driftedFeatures,
+                sampleSize,
+                message == null ? "" : message,
+                featuresJson == null ? "[]" : featuresJson,
+                triggerSource == null ? "manual" : triggerSource,
+                toTimestamp(Instant.now())
+        );
+    }
+
+    public List<Map<String, Object>> fetchDriftHistory(int limit) {
+        ensureDriftHistoryTable();
+        int safeLimit = Math.max(1, Math.min(limit, 200));
+        return clickHouseJdbcTemplate.query(
+                """
+                        SELECT
+                            check_id,
+                            model_name,
+                            dataset_drift,
+                            drift_share,
+                            number_of_drifted_features,
+                            sample_size,
+                            message,
+                            features_json,
+                            trigger_source,
+                            checked_at
+                        FROM neuroflow_analytics.drift_history
+                        ORDER BY checked_at DESC
+                        LIMIT %d
+                        """.formatted(safeLimit),
+                (rs, rowNum) -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("checkId", rs.getString("check_id"));
+                    row.put("modelName", rs.getString("model_name"));
+                    row.put("datasetDrift", rs.getInt("dataset_drift") == 1);
+                    row.put("driftShare", rs.getDouble("drift_share"));
+                    row.put("numberOfDriftedFeatures", rs.getInt("number_of_drifted_features"));
+                    row.put("sampleSize", rs.getInt("sample_size"));
+                    row.put("message", rs.getString("message"));
+                    row.put("featuresJson", rs.getString("features_json"));
+                    row.put("triggerSource", rs.getString("trigger_source"));
+                    Timestamp checkedAt = rs.getTimestamp("checked_at");
+                    row.put(
+                            "checkedAt",
+                            checkedAt == null ? Instant.now().toString() : checkedAt.toInstant().toString()
+                    );
+                    return row;
+                }
+        );
+    }
+
     private void insertMetric(
             Instant windowStart,
             Instant windowEnd,

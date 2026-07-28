@@ -57,3 +57,21 @@ CREATE TABLE IF NOT EXISTS neuroflow_analytics.metric_aggregates
 ENGINE = MergeTree
 PARTITION BY toYYYYMMDD(window_start)
 ORDER BY (service_name, metric_name, window_start);
+
+CREATE TABLE IF NOT EXISTS neuroflow_analytics.drift_history
+(
+    check_id                    String,
+    model_name                  LowCardinality(String),
+    dataset_drift               UInt8,
+    drift_share                 Float64,
+    number_of_drifted_features  UInt16,
+    sample_size                 UInt32,
+    message                     String,
+    features_json               String,
+    trigger_source              LowCardinality(String),
+    checked_at                  DateTime64(3, 'UTC'),
+    ingested_at                 DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMMDD(checked_at)
+ORDER BY (model_name, checked_at);
