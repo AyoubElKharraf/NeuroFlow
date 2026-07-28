@@ -34,6 +34,10 @@ def test_drift_check_normal_sample(client: TestClient) -> None:
     body = response.json()
     assert body["dataset_drift"] is False
     assert body["number_of_drifted_features"] == 0
+    assert "age" in body["feature_metrics"]
+    age_metric = body["feature_metrics"]["age"]
+    assert "baseline_mean" in age_metric
+    assert "production_mean" in age_metric
 
 
 def test_drift_check_detects_shifted_distribution(client: TestClient) -> None:

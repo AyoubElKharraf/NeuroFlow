@@ -9,7 +9,7 @@ import { LoginModal } from "@/components/LoginModal";
 import { PerformanceCharts } from "@/components/PerformanceCharts";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { fetchDriftReport, fetchKpis, fetchPerformanceSeries } from "@/lib/api";
-import { MOCK_DRIFT_OK, MOCK_KPI, buildMockPerformanceSeries } from "@/lib/mock-data";
+import { MOCK_DRIFT_OK, MOCK_KPI } from "@/lib/mock-data";
 import type { DriftReport, KpiSnapshot, PerformancePoint } from "@/lib/types";
 
 function DashboardApp() {
@@ -25,20 +25,20 @@ function DashboardApp() {
   const handleMockFallback = useCallback(() => setMockMode(true), []);
 
   useEffect(() => {
-    setSeries(buildMockPerformanceSeries());
-  }, []);
-
-  useEffect(() => {
     if (!ready || !isAuthenticated) return;
 
     startTransition(() => {
       void (async () => {
         const [kpiResult, driftResult, perfResult] = await Promise.all([
           fetchKpis(),
-          fetchDriftReport(false),
+          fetchDriftReport(),
           fetchPerformanceSeries(),
         ]);
-        setKpi(kpiResult.data);
+        setKpi({
+          ...kpiResult.data,
+          datasetDrift: driftResult.data.datasetDrift,
+          driftShare: driftResult.data.driftShare,
+        });
         setDrift(driftResult.data);
         setSeries(perfResult.data);
         setMockMode(kpiResult.mock || driftResult.mock || perfResult.mock);
@@ -87,6 +87,7 @@ function DashboardApp() {
               driftShare: report.driftShare,
             }));
             if (mock) setMockMode(true);
+            else setMockMode(false);
           }}
         />
       </main>

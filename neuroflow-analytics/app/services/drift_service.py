@@ -33,7 +33,9 @@ class DriftService:
         snapshot = report.run(current_data=current, reference_data=reference)
         self._last_html = snapshot.get_html_str(as_iframe=False)
 
-        return self._extract_metrics(snapshot.dict())
+        metrics = self._extract_metrics(snapshot.dict())
+        self._attach_feature_means(metrics, reference, current)
+        return metrics
 
     def get_last_html_report(self) -> str | None:
         return self._last_html
@@ -120,6 +122,23 @@ class DriftService:
             "number_of_drifted_features": int(drifted_count),
             "feature_metrics": feature_metrics,
         }
+
+    @staticmethod
+    def _attach_feature_means(
+        metrics: dict[str, Any],
+        reference: pd.DataFrame,
+        current: pd.DataFrame,
+    ) -> None:
+        feature_metrics = metrics.get("feature_metrics") or {}
+        for feature, details in feature_metrics.items():
+            if feature in reference.columns:
+                details["baseline_mean"] = float(reference[feature].mean())
+            else:
+                details["baseline_mean"] = 0.0
+            if feature in current.columns:
+                details["production_mean"] = float(current[feature].mean())
+            else:
+                details["production_mean"] = 0.0
 
 
 _drift_service: DriftService | None = None

@@ -224,11 +224,12 @@ docker compose down -v
 Interface Next.js (thème dark) sur [http://localhost:3000](http://localhost:3000) — voir le screenshot en tête de README.
 
 - **Login JWT** (modal) : `admin` / `admin123` — token stocké en `localStorage`, injecté sur l’API et le SSE
-- KPI : événements ingérés, latence p95/p99, taux d’erreurs HTTP, statut de data drift
+- KPI : événements, latence p95/p99, taux d’erreurs HTTP, drift — **agrégés depuis ClickHouse** (`GET /api/v1/metrics/kpis`)
 - Live stream SSE (`/api/v1/alerts/stream?token=…`) avec filtres INFO / WARN / ERROR
-- Graphiques de performance (volume & latence ML)
+- Graphiques de performance (req/min & latence inference) — **séries ClickHouse** (`GET /api/v1/metrics/performance`)
+- Drift monitor : features production lues depuis `ml_predictions` puis analysées par Evidently (`POST /api/v1/analytics/drift/run`)
 
-> Un **401** backend efface la session et réaffiche le formulaire de connexion. Le badge **MOCK MODE** apparaît si analytics/API sont indisponibles.
+> Un **401** backend efface la session et réaffiche le formulaire de connexion. Le badge **MOCK MODE** apparaît si le backend est indisponible (fallback local).
 
 ---
 
@@ -251,7 +252,7 @@ curl -X POST http://localhost:8001/api/v1/drift/check ^
 curl -o drift-report.html http://localhost:8001/api/v1/drift/report-html
 ```
 
-Côté backend, un client Rest appelle périodiquement l’analytics (désactivable via `neuroflow.analytics.drift-check-enabled`). Déclenchement manuel :
+Côté backend, un client Rest lit les `features_json` récents dans ClickHouse, puis appelle l’analytics (désactivable via `neuroflow.analytics.drift-check-enabled`). Le dashboard utilise le même chemin :
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/analytics/drift/run
@@ -271,7 +272,9 @@ curl -X POST http://localhost:8080/api/v1/analytics/drift/run
 | `POST` | `/api/v1/simulation/stop` | **ADMIN** | Arrête la simulation |
 | `GET` | `/api/v1/simulation/status` | JWT | État de la simulation |
 | `GET` | `/api/v1/metrics/ingestion` | JWT | Compteurs ClickHouse (telemetry / ML) |
-| `POST` | `/api/v1/analytics/drift/run` | JWT | Lance un check drift via analytics |
+| `GET` | `/api/v1/metrics/kpis` | JWT | KPI dashboard (p95/p99, error rate, trend) depuis ClickHouse |
+| `GET` | `/api/v1/metrics/performance?minutes=30` | JWT | Série req/min + latence inference (agrégats ClickHouse) |
+| `POST` | `/api/v1/analytics/drift/run` | JWT | Drift Evidently sur `features_json` ClickHouse |
 | `GET` | `/api/v1/alerts/stream` | JWT | **SSE** — `Authorization: Bearer` ou `?token=` |
 
 Exemple login :
@@ -331,6 +334,7 @@ Pipeline [`.github/workflows/ci.yml`](.github/workflows/ci.yml) sur chaque push/
 - [x] **Phase 3** — Moteur de drift Evidently + client Spring
 - [x] **Phase 4** — Dashboard Next.js (SSE, charts, drift)
 - [x] **Phase 5** — Testcontainers + GitHub Actions CI
+- [x] **Phase 6** — Brancher KPI / charts / drift UI sur agrégats ClickHouse (plus de mocks hardcodés)
 
 ---
 

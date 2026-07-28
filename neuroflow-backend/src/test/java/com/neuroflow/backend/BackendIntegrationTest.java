@@ -84,6 +84,54 @@ class BackendIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void kpisAndPerformanceComeFromClickHouse() throws Exception {
+        String token = loginAs("admin", "admin123");
+
+        clickHouseRepository.insertTelemetry(new TelemetryEvent(
+                "kpi-service",
+                55L,
+                200,
+                Instant.now(),
+                "/api/orders"
+        ));
+        clickHouseRepository.insertTelemetry(new TelemetryEvent(
+                "kpi-service",
+                900L,
+                500,
+                Instant.now(),
+                "/api/orders"
+        ));
+
+        mockMvc.perform(get("/api/v1/metrics/kpis")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalEvents").isNumber())
+                .andExpect(jsonPath("$.latencyP95Ms").isNumber())
+                .andExpect(jsonPath("$.latencyP99Ms").isNumber())
+                .andExpect(jsonPath("$.errorRatePct").isNumber())
+                .andExpect(jsonPath("$.source").value("clickhouse"));
+
+        mockMvc.perform(get("/api/v1/metrics/performance")
+                        .param("minutes", "30")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source").value("clickhouse"))
+                .andExpect(jsonPath("$.series").isArray())
+                .andExpect(jsonPath("$.series.length()").value(30));
+    }
+
+    @Test
+    void driftRunWithoutMlRowsReturnsSkipped() throws Exception {
+        String token = loginAs("admin", "admin123");
+
+        mockMvc.perform(post("/api/v1/analytics/drift/run")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SKIPPED"))
+                .andExpect(jsonPath("$.features").isArray());
+    }
+
+    @Test
     void sseAllowsTokenQueryParam() throws Exception {
         String token = loginAs("user", "user123");
 

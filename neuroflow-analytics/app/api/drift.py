@@ -34,6 +34,8 @@ class FeatureDriftMetric(BaseModel):
     drift_score: float
     drift_detected: bool
     stat_test_name: str
+    baseline_mean: float = 0.0
+    production_mean: float = 0.0
 
 
 class DriftCheckResponse(BaseModel):

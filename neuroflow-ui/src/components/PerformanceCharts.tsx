@@ -23,7 +23,7 @@ export function PerformanceCharts({ series }: PerformanceChartsProps) {
       <div className="mb-4">
         <h2 className="text-sm font-medium text-ink">System Performance</h2>
         <p className="mt-1 text-xs text-mute">
-          Request volume and ML inference latency — last 30 minutes
+          Request volume and ML inference latency from ClickHouse — last 30 minutes
         </p>
       </div>
       <div className="h-[280px] w-full">

@@ -16,15 +16,16 @@ Optional env (defaults shown):
 
 ```bat
 set NEXT_PUBLIC_API_URL=http://localhost:8080
-set NEXT_PUBLIC_ANALYTICS_URL=http://localhost:8001
 ```
+
+The dashboard talks to the **Spring backend only**. KPIs, performance charts and drift all resolve through ClickHouse via `/api/v1/metrics/*` and `/api/v1/analytics/drift/run`.
 
 ## Features
 
-- Executive KPI overview (events, latency, error rate, drift badge)
+- Executive KPI overview from ClickHouse (events, p95/p99, error rate, drift badge)
 - Live SSE log stream (`/api/v1/alerts/stream`) with mock fallback
-- Drift monitor + manual check against analytics service
-- Performance charts (30-minute window)
+- Drift monitor against production `ml_predictions.features_json` (Evidently via backend)
+- Performance charts (req/min + inference latency, last 30 minutes)
 
 ## Verify
 

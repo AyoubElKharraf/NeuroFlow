@@ -12,7 +12,14 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Repository
@@ -112,6 +119,155 @@ public class ClickHouseRepository {
                 (rs, rowNum) -> rs.getString("features_json"),
                 safeLimit
         );
+    }
+
+    /**
+     * Latency percentiles over a rolling window (minutes). Returns zeros when empty.
+     */
+    public Map<String, Double> fetchLatencyPercentiles(int windowMinutes) {
+        int minutes = Math.max(1, Math.min(windowMinutes, 1440));
+        String sql = """
+                SELECT
+                    quantile(0.95)(latency_ms) AS p95,
+                    quantile(0.99)(latency_ms) AS p99
+                FROM neuroflow_analytics.telemetry_events
+                WHERE event_time >= now64(3) - INTERVAL %d MINUTE
+                """.formatted(minutes);
+        return clickHouseJdbcTemplate.query(sql, rs -> {
+            if (!rs.next()) {
+                return Map.of("p95", 0.0, "p99", 0.0);
+            }
+            return Map.of(
+                    "p95", sanitizeDouble(rs.getDouble("p95")),
+                    "p99", sanitizeDouble(rs.getDouble("p99"))
+            );
+        });
+    }
+
+    /**
+     * HTTP error rate (4xx+5xx) percentage over the last {@code windowMinutes}.
+     */
+    public double fetchErrorRatePct(int windowMinutes) {
+        int minutes = Math.max(1, Math.min(windowMinutes, 1440));
+        String sql = """
+                SELECT
+                    if(count() = 0, 0.0,
+                       countIf(http_status >= 400) * 100.0 / count()) AS error_rate_pct
+                FROM neuroflow_analytics.telemetry_events
+                WHERE event_time >= now64(3) - INTERVAL %d MINUTE
+                """.formatted(minutes);
+        Double rate = clickHouseJdbcTemplate.query(sql, rs -> {
+            if (!rs.next()) {
+                return 0.0;
+            }
+            return sanitizeDouble(rs.getDouble("error_rate_pct"));
+        });
+        return rate == null ? 0.0 : rate;
+    }
+
+    /**
+     * Percent change of event volume: recent window vs the immediately previous window.
+     */
+    public double fetchEventsTrendPct(int windowMinutes) {
+        int minutes = Math.max(1, Math.min(windowMinutes, 720));
+        String sql = """
+                SELECT
+                    countIf(event_time >= now64(3) - INTERVAL %d MINUTE) AS recent_count,
+                    countIf(
+                        event_time >= now64(3) - INTERVAL %d MINUTE
+                        AND event_time < now64(3) - INTERVAL %d MINUTE
+                    ) AS previous_count
+                FROM neuroflow_analytics.telemetry_events
+                WHERE event_time >= now64(3) - INTERVAL %d MINUTE
+                """.formatted(minutes, minutes * 2, minutes, minutes * 2);
+        Double trend = clickHouseJdbcTemplate.query(sql, rs -> {
+            if (!rs.next()) {
+                return 0.0;
+            }
+            long recent = rs.getLong("recent_count");
+            long previous = rs.getLong("previous_count");
+            if (previous == 0L) {
+                return recent > 0L ? 100.0 : 0.0;
+            }
+            return ((recent - previous) * 100.0) / previous;
+        });
+        return trend == null ? 0.0 : trend;
+    }
+
+    /**
+     * Per-minute request volume (telemetry) and average ML inference latency for charts.
+     * Missing buckets are filled with zeros so the UI gets a continuous series.
+     */
+    public List<Map<String, Object>> fetchPerformanceSeries(int minutes) {
+        int window = Math.max(5, Math.min(minutes, 180));
+
+        Map<String, Long> requestsByBucket = new HashMap<>();
+        String requestsSql = """
+                SELECT
+                    formatDateTime(toStartOfMinute(event_time), '%%Y-%%m-%%d %%H:%%M:00') AS bucket,
+                    count() AS requests
+                FROM neuroflow_analytics.telemetry_events
+                WHERE event_time >= now64(3) - INTERVAL %d MINUTE
+                GROUP BY bucket
+                ORDER BY bucket
+                """.formatted(window);
+        clickHouseJdbcTemplate.query(requestsSql, rs -> {
+            while (rs.next()) {
+                requestsByBucket.put(rs.getString("bucket"), rs.getLong("requests"));
+            }
+            return null;
+        });
+
+        Map<String, Double> inferenceByBucket = new HashMap<>();
+        String inferenceSql = """
+                SELECT
+                    formatDateTime(toStartOfMinute(event_time), '%%Y-%%m-%%d %%H:%%M:00') AS bucket,
+                    avg(latency_ms) AS avg_inference_ms
+                FROM neuroflow_analytics.ml_predictions
+                WHERE event_time >= now64(3) - INTERVAL %d MINUTE
+                GROUP BY bucket
+                ORDER BY bucket
+                """.formatted(window);
+        clickHouseJdbcTemplate.query(inferenceSql, rs -> {
+            while (rs.next()) {
+                inferenceByBucket.put(
+                        rs.getString("bucket"),
+                        sanitizeDouble(rs.getDouble("avg_inference_ms"))
+                );
+            }
+            return null;
+        });
+
+
+        List<Map<String, Object>> series = new ArrayList<>(window);
+        LocalDateTime cursor = LocalDateTime.now(ZoneOffset.UTC)
+                .withSecond(0)
+                .withNano(0)
+                .minusMinutes(window - 1L);
+        DateTimeFormatter keyFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:00");
+        DateTimeFormatter labelFmt = DateTimeFormatter.ofPattern("HH:mm");
+
+        for (int i = 0; i < window; i++) {
+            String key = cursor.format(keyFmt);
+            Map<String, Object> point = new LinkedHashMap<>();
+            point.put("time", cursor.format(labelFmt));
+            point.put("bucket", key);
+            point.put("requestsPerMin", requestsByBucket.getOrDefault(key, 0L));
+            point.put(
+                    "inferenceLatencyMs",
+                    Math.round(inferenceByBucket.getOrDefault(key, 0.0))
+            );
+            series.add(point);
+            cursor = cursor.plusMinutes(1);
+        }
+        return series;
+    }
+
+    private static double sanitizeDouble(double value) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            return 0.0;
+        }
+        return value;
     }
 
     private static Timestamp toTimestamp(Instant instant) {
