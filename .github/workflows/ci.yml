@@ -55,6 +55,8 @@ jobs:
 
       - name: Run pytest
         working-directory: neuroflow-analytics
+        env:
+          PYTHONPATH: .
         run: pytest -q
 
   ui:
