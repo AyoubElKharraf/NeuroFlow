@@ -107,6 +107,14 @@ export function ActuatorMetricsPanel() {
           >
             Prometheus UI :9090
           </a>
+          <a
+            href="http://localhost:3001"
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md border border-line bg-elevated px-2.5 py-1 text-mute transition hover:border-accent/40 hover:text-accent"
+          >
+            Grafana :3001
+          </a>
         </div>
       </div>
 

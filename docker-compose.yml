@@ -12,6 +12,7 @@
 #   Backend    → localhost:8080
 #   UI         → localhost:3000
 #   Prometheus → localhost:9090
+#   Grafana    → localhost:3001
 #
 # Quick start:  docker compose up -d --build
 # Infra only:   docker compose up -d zookeeper kafka kafka-init postgres clickhouse redis
@@ -260,6 +261,28 @@ services:
       - neuroflow-net
     restart: unless-stopped
 
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: neuroflow-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/neuroflow-runtime.json
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - neuroflow-net
+    restart: unless-stopped
+
 volumes:
   zookeeper_data:
   zookeeper_log:
@@ -268,6 +291,7 @@ volumes:
   clickhouse_data:
   redis_data:
   prometheus_data:
+  grafana_data:
 
 networks:
   neuroflow-net:

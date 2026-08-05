@@ -46,6 +46,8 @@ export interface SimulationStatus {
   running: boolean;
   emitted: number;
   targetRatePerSec: number;
+  /** Target share of simulated HTTP 4xx/5xx responses (0–100). */
+  errorRatePct: number;
 }
 
 export interface DriftHistoryPoint {

@@ -55,10 +55,12 @@ Dans les architectures distribuées, deux signaux critiques restent souvent invi
 ### Script démo entretien (~60 s)
 
 1. Ouvrir http://localhost:3000 → login `admin` / `admin123`
-2. Cliquer **Start** → badge `SIM RUNNING`, KPI et compteurs Actuator bougent
-3. Observer le **Live Stream** : WARN / ERROR issus du topic Kafka `alerts`
-4. **Run Drift Check (ClickHouse)** → features STABLE / DRIFTED + timeline historique
-5. (Optionnel) **Test Webhook** si Slack/Discord sont configurés → **Stop**
+2. Cliquer **Start** → badge `SIM RUNNING`, KPI et compteurs Actuator bougent  
+   - Optionnel : presets **Low / Med / High** pour le taux d’erreurs HTTP simulé  
+3. Observer le **Live Stream** : WARN / ERROR issus du topic Kafka `alerts`  
+4. **Run Drift Check (ClickHouse)** → features STABLE / DRIFTED + timeline historique  
+5. (Optionnel) Ouvrir Grafana http://localhost:3001 → dashboard **NeuroFlow Runtime**  
+6. (Optionnel) **Test Webhook** si Slack/Discord sont configurés → **Stop**
 
 ---
 
@@ -128,9 +130,9 @@ Pipeline **Event-Driven** : couplage faible, faible latence, stack entièrement 
 | **Alertes SSE** | Stream branché sur le topic Kafka `alerts` (HTTP 4xx/5xx, latence, drift) |
 | **Data Drift MLOps** | Evidently (K-S) sur `age`, `income`, `credit_score`, `loan_amount` + historique ClickHouse |
 | **Inférence ML** | Modèle sklearn `loan-risk-model` via `POST /api/v1/predict` (appelé par la simulation) |
-| **Simulation UI** | Start / Stop (rôle ADMIN) + compteur d’événements dans le header |
+| **Simulation UI** | Start / Stop (rôle ADMIN) + presets error rate Low/Med/High + compteur d’événements |
 | **Auth JWT** | Users en PostgreSQL (`admin` / `user`) + rôles Spring Security |
-| **Observabilité JVM** | Actuator + Micrometer → `/actuator/prometheus` scrapé par Prometheus `:9090` |
+| **Observabilité JVM** | Actuator + Micrometer → Prometheus `:9090` + Grafana `:3001` |
 | **Webhooks** | Slack / Discord sur détection de dataset drift (cooldown Redis) |
 | **CI** | Testcontainers + pytest + build Next.js + Playwright smoke |
 
@@ -216,6 +218,7 @@ docker compose down -v       # wipe total des données
 | http://localhost:8080/actuator/prometheus | Métriques Prometheus |
 | http://localhost:8001/health | Analytics FastAPI |
 | http://localhost:9090 | Prometheus UI |
+| http://localhost:3001 | Grafana (admin / admin, dashboard NeuroFlow Runtime) |
 | http://localhost:8123 | ClickHouse HTTP |
 
 | Service Compose | Port hôte |
@@ -228,6 +231,7 @@ docker compose down -v       # wipe total des données
 | ClickHouse | `8123` / `9000` |
 | Redis | `6379` |
 | Prometheus | `9090` |
+| Grafana | `3001` |
 | Zookeeper | `2181` |
 
 ---
@@ -264,7 +268,8 @@ NeuroFlow/
 | `POST` | `/api/v1/auth/login` | public | Login JWT |
 | `POST` | `/api/v1/simulation/start` | **ADMIN** | Démarre la simulation Kafka |
 | `POST` | `/api/v1/simulation/stop` | **ADMIN** | Arrête la simulation |
-| `GET` | `/api/v1/simulation/status` | JWT | État simulation |
+| `POST` | `/api/v1/simulation/error-rate` | **ADMIN** | Cible le % d’erreurs HTTP simulées (`{ "errorRatePct": 15 }`) |
+| `GET` | `/api/v1/simulation/status` | JWT | État simulation (+ `errorRatePct`) |
 | `GET` | `/api/v1/metrics/kpis` | JWT | KPI dashboard (ClickHouse) |
 | `GET` | `/api/v1/metrics/performance?minutes=30` | JWT | Séries req/min + latence ML |
 | `GET` | `/api/v1/metrics/runtime` | JWT | Snapshot Micrometer (JVM / HTTP / counters) |
@@ -365,7 +370,7 @@ Pipeline : [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 - [x] Phase 9 — Historique drift (ClickHouse + timeline UI)  
 - [x] Phase 10 — Webhooks Slack / Discord  
 - [x] Phase 11 — Actuator + Prometheus (dashboard + scrape Compose)  
-- [ ] Grafana dashboards  
+- [x] Phase 12 — Grafana provisionné + polish démo (heap JVM, error-rate sim)  
 - [ ] Concept drift / monitoring des labels  
 - [ ] Durcissement prod (secrets, TLS, rate-limit API)
 

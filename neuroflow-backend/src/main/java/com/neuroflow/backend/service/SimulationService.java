@@ -17,10 +17,12 @@ import org.springframework.web.client.RestClientException;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Service
@@ -34,13 +36,16 @@ public class SimulationService {
     private static final List<String> ENDPOINTS = List.of(
             "/api/orders", "/api/login", "/api/products", "/api/payments/charge"
     );
-    private static final int[] STATUS_CODES = {200, 200, 200, 200, 201, 400, 404, 500};
+    private static final int[] ERROR_STATUS_CODES = {400, 404, 500};
+    /** Demo-friendly default (~8% HTTP errors instead of ~37%). */
+    private static final int DEFAULT_ERROR_RATE_PCT = 8;
 
     private final StreamBridge streamBridge;
     private final RestClient analyticsRestClient;
     private final Counter simulationEmittedCounter;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicLong emitted = new AtomicLong();
+    private final AtomicInteger errorRatePct = new AtomicInteger(DEFAULT_ERROR_RATE_PCT);
 
     public SimulationService(
             StreamBridge streamBridge,
@@ -54,7 +59,7 @@ public class SimulationService {
     public Map<String, Object> start() {
         emitted.set(0);
         running.set(true);
-        log.info("simulation_started rate=~5 msg/sec");
+        log.info("simulation_started rate=~5 msg/sec errorRatePct={}", errorRatePct.get());
         return status();
     }
 
@@ -64,12 +69,20 @@ public class SimulationService {
         return status();
     }
 
+    public Map<String, Object> setErrorRatePct(int pct) {
+        int clamped = Math.max(0, Math.min(100, pct));
+        errorRatePct.set(clamped);
+        log.info("simulation_error_rate_pct={}", clamped);
+        return status();
+    }
+
     public Map<String, Object> status() {
-        return Map.of(
-                "running", running.get(),
-                "emitted", emitted.get(),
-                "targetRatePerSec", 5
-        );
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("running", running.get());
+        body.put("emitted", emitted.get());
+        body.put("targetRatePerSec", 5);
+        body.put("errorRatePct", errorRatePct.get());
+        return body;
     }
 
     @Scheduled(fixedRate = 200)
@@ -106,13 +119,20 @@ public class SimulationService {
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         String service = SERVICES.get(rnd.nextInt(SERVICES.size()));
         String endpoint = ENDPOINTS.get(rnd.nextInt(ENDPOINTS.size()));
-        int status = STATUS_CODES[rnd.nextInt(STATUS_CODES.length)];
+        int status = randomHttpStatus(rnd);
         long latency = switch (status) {
             case 500 -> rnd.nextLong(800, 2500);
             case 400, 404 -> rnd.nextLong(20, 120);
             default -> rnd.nextLong(15, 350);
         };
         return new TelemetryEvent(service, latency, status, Instant.now(), endpoint);
+    }
+
+    private int randomHttpStatus(ThreadLocalRandom rnd) {
+        if (rnd.nextInt(100) < errorRatePct.get()) {
+            return ERROR_STATUS_CODES[rnd.nextInt(ERROR_STATUS_CODES.length)];
+        }
+        return rnd.nextBoolean() ? 200 : 201;
     }
 
     private MlPredictionEvent randomMlPrediction() {

@@ -241,6 +241,15 @@ export async function stopSimulation(): Promise<SimulationStatus> {
   });
 }
 
+export async function setSimulationErrorRate(
+  errorRatePct: number,
+): Promise<SimulationStatus> {
+  return fetchJson<SimulationStatus>(`${API_URL}/api/v1/simulation/error-rate`, {
+    method: "POST",
+    body: JSON.stringify({ errorRatePct }),
+  });
+}
+
 export type WebhookStatus = {
   enabled: boolean;
   slackConfigured: boolean;

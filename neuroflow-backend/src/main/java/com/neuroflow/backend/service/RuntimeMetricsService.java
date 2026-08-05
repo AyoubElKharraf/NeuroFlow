@@ -6,6 +6,7 @@ import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Service;
 
 import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryUsage;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -23,13 +24,11 @@ public class RuntimeMetricsService {
     }
 
     public Map<String, Object> snapshot() {
+        double[] heap = resolveHeapBytes();
         Map<String, Object> jvm = new LinkedHashMap<>();
-        jvm.put("heapUsedMb", bytesToMb(gaugeValue("jvm.memory.used", "area", "heap")));
-        jvm.put("heapMaxMb", bytesToMb(gaugeValue("jvm.memory.max", "area", "heap")));
-        jvm.put("heapUsagePct", round1(ratioPct(
-                gaugeValue("jvm.memory.used", "area", "heap"),
-                gaugeValue("jvm.memory.max", "area", "heap")
-        )));
+        jvm.put("heapUsedMb", bytesToMb(heap[0]));
+        jvm.put("heapMaxMb", bytesToMb(heap[1]));
+        jvm.put("heapUsagePct", round1(ratioPct(heap[0], heap[1])));
         jvm.put("threadsLive", (long) gaugeValue("jvm.threads.live"));
         jvm.put("cpuProcessPct", round1(gaugeValue("process.cpu.usage") * 100.0));
         jvm.put("cpuSystemPct", round1(gaugeValue("system.cpu.usage") * 100.0));
@@ -62,6 +61,35 @@ public class RuntimeMetricsService {
         return snapshot;
     }
 
+    /**
+     * Micrometer {@code jvm.memory.max} is often {@code -1} under containers.
+     * Prefer MemoryMXBean, then Runtime.maxMemory() as fallback.
+     *
+     * @return {@code [usedBytes, maxBytes]}
+     */
+    private double[] resolveHeapBytes() {
+        MemoryUsage usage = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();
+        double used = usage.getUsed();
+        double max = usage.getMax();
+
+        double micrometerUsed = gaugeValue("jvm.memory.used", "area", "heap");
+        double micrometerMax = gaugeValue("jvm.memory.max", "area", "heap");
+        if (micrometerUsed > 0) {
+            used = micrometerUsed;
+        }
+        if (micrometerMax > 0) {
+            max = micrometerMax;
+        }
+        if (max <= 0) {
+            max = Runtime.getRuntime().maxMemory();
+        }
+        if (used <= 0) {
+            Runtime rt = Runtime.getRuntime();
+            used = Math.max(0L, rt.totalMemory() - rt.freeMemory());
+        }
+        return new double[]{used, max};
+    }
+
     private double gaugeValue(String name) {
         var gauge = meterRegistry.find(name).gauge();
         return gauge == null ? 0.0 : gauge.value();
@@ -69,7 +97,14 @@ public class RuntimeMetricsService {
 
     private double gaugeValue(String name, String tagKey, String tagValue) {
         var gauge = meterRegistry.find(name).tag(tagKey, tagValue).gauge();
-        return gauge == null ? 0.0 : gauge.value();
+        if (gauge == null) {
+            return 0.0;
+        }
+        double value = gauge.value();
+        if (Double.isNaN(value) || Double.isInfinite(value) || value < 0) {
+            return 0.0;
+        }
+        return value;
     }
 
     private long counterValue(String name) {

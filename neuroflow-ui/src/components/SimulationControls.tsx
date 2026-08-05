@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Play, Square } from "lucide-react";
 import {
   fetchSimulationStatus,
+  setSimulationErrorRate,
   startSimulation,
   stopSimulation,
 } from "@/lib/api";
@@ -19,7 +20,14 @@ const IDLE: SimulationStatus = {
   running: false,
   emitted: 0,
   targetRatePerSec: 5,
+  errorRatePct: 8,
 };
+
+const ERROR_PRESETS = [
+  { label: "Low", pct: 5 },
+  { label: "Med", pct: 15 },
+  { label: "High", pct: 40 },
+] as const;
 
 export function SimulationControls({ onChanged }: SimulationControlsProps) {
   const { isAuthenticated, isAdmin } = useAuth();
@@ -70,6 +78,21 @@ export function SimulationControls({ onChanged }: SimulationControlsProps) {
     }
   }
 
+  async function applyErrorPreset(pct: number) {
+    if (!isAdmin || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const next = await setSimulationErrorRate(pct);
+      setStatus(next);
+      onChanged?.(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to set error rate");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!isAuthenticated) return null;
 
   return (
@@ -94,6 +117,7 @@ export function SimulationControls({ onChanged }: SimulationControlsProps) {
           <span className="text-mute">
             · {status.emitted.toLocaleString("en-US")} evt
             {status.running ? ` · ~${status.targetRatePerSec}/s` : ""}
+            {` · err ${status.errorRatePct ?? 8}%`}
           </span>
         </span>
 
@@ -117,6 +141,29 @@ export function SimulationControls({ onChanged }: SimulationControlsProps) {
               <Square className="h-3 w-3" aria-hidden />
               Stop
             </button>
+            <span className="ml-1 hidden text-[10px] uppercase tracking-wider text-mute sm:inline">
+              Errors
+            </span>
+            {ERROR_PRESETS.map((preset) => {
+              const active = (status.errorRatePct ?? 8) === preset.pct;
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void applyErrorPreset(preset.pct)}
+                  title={`Target HTTP error rate ≈ ${preset.pct}%`}
+                  className={cn(
+                    "inline-flex cursor-pointer items-center rounded-md border px-2 py-1.5 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+                    active
+                      ? "border-accent/50 bg-accent/15 text-accent"
+                      : "border-line bg-elevated text-mute hover:border-accent/30 hover:text-ink",
+                  )}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
           </>
         )}
       </div>
