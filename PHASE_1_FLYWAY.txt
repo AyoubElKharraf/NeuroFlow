@@ -1,0 +1,392 @@
+===============================================================================
+                       NEUROFLOW - PROJET GENIE LOGICIEL
+       PHASE 1 : INTEGRATION TRANSPARENTE DE FLYWAY DANS SPRING BOOT 3
+===============================================================================
+
+DATE : Octobre 2026
+AUTEUR : Équipe NeuroFlow / Master M2I - Génie Logiciel
+MODULE : neuroflow-backend (Spring Boot 3.3.5 / Java 21 / PostgreSQL 16)
+
+-------------------------------------------------------------------------------
+TABLE DES MATIERES
+-------------------------------------------------------------------------------
+1. OBJECTIFS ET CONSIGNES STRICTES DE LA PHASE 1
+2. ETAPE 1 : AJOUT DES DEPENDANCES MAVEN (pom.xml)
+3. ETAPE 2 : CONFIGURATION DU SCHEMA ET DE FLYWAY (application.yml)
+4. ETAPE 3 : CREATION DU SCRIPT DDL INITIAL (V1__init_schema.sql)
+5. ETAPE 4 : DEPLOIEMENT DOCKER ET LOGS DE DEMARRAGE
+6. ANALYSE ET RESOLUTION DES ERREURS RENCONTREES
+7. ETAPE 5 : VALIDATION DU VERSIONNEMENT AVEC UNE MIGRATION V2 (V2__add_alert_events.sql)
+8. ETAPE 6 : RECAPITULATIF DES COMMANDES ET RESULTATS OBTENUS
+9. CONCLUSION ET ETAT PRET POUR LA PHASE 2
+10. PROMPT DE RESUME POUR L'AUTRE AGENT (POUR REPRENDRE PLUS TARD)
+
+===============================================================================
+1. OBJECTIFS ET CONSIGNES STRICTES DE LA PHASE 1
+===============================================================================
+L'objectif est d'intégrer l'outil de migration et de versionnement de base de 
+données Flyway dans le microservice Spring Boot 3 sans impacter le code métier.
+
+Consignes respectées :
+[x] Conserver la compatibilité : Aucune classe Java métier, service, repository 
+    ou controller n'a été modifié.
+[x] Passer Hibernate en validation : Réglage de spring.jpa.hibernate.ddl-auto 
+    sur "validate" pour interdire à Hibernate toute modification directe du schéma.
+[x] Activer la Baseline : Configuration de "baseline-on-migrate: true" pour 
+    éviter tout conflit si la base PostgreSQL contient déjà des tables.
+[x] Script V1 initial : Création du script DDL initial correspondant exactement 
+    à l'entité JPA AppUser.
+[x] Configuration YAML : Utilisation de variables d'environnement avec des 
+    valeurs de repli (fallback) par défaut pour l'exécution locale.
+
+===============================================================================
+2. ETAPE 1 : AJOUT DES DEPENDANCES MAVEN
+===============================================================================
+OÙ :
+Fichier : NeuroFlow/neuroflow-backend/pom.xml
+
+QUOI :
+Ajout de deux dépendances Flyway dans la section <dependencies> :
+- org.flywaydb:flyway-core
+- org.flywaydb:flyway-database-postgresql
+
+POURQUOI :
+Depuis Spring Boot 3 / Flyway 10+, le moteur Flyway a été modularisé. 
+Le support spécifique pour PostgreSQL n'est plus inclus nativement dans flyway-core.
+Il est obligatoire d'ajouter flyway-database-postgresql pour permettre la 
+connexion et l'exécution des scripts sur PostgreSQL.
+
+EXTRAIT MODIFIE DANS pom.xml :
+-------------------------------------------------------------------------------
+        <!-- Persistence (PostgreSQL) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Flyway Database Migration -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+-------------------------------------------------------------------------------
+
+COMMANDE DE VALIDATION :
+mvn clean test-compile -DskipTests
+
+RESULTAT :
+[INFO] BUILD SUCCESS
+[INFO] Compiling 33 source files with javac [debug parameters release 21]
+[INFO] Compiling 5 source files with javac to target\test-classes
+[INFO] Total time: 10.911 s
+
+===============================================================================
+3. ETAPE 2 : CONFIGURATION DU SCHEMA ET DE FLYWAY
+===============================================================================
+OÙ :
+Fichier : NeuroFlow/neuroflow-backend/src/main/resources/application.yml
+
+QUOI :
+1. Remplacement de "spring.jpa.hibernate.ddl-auto: update" par :
+   "spring.jpa.hibernate.ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}"
+2. Ajout du bloc de configuration "spring.flyway" :
+   - enabled: ${FLYWAY_ENABLED:true}
+   - baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:true}
+   - locations: ${FLYWAY_LOCATIONS:classpath:db/migration}
+
+POURQUOI :
+1. Hibernate ddl-auto: validate :
+   En production et en architecture propre, confier la création/mise à jour du 
+   schéma à Hibernate (ddl-auto: update) est dangereux (pas de rollback possible, 
+   pas d'historique). Le mode "validate" force Hibernate à vérifier au démarrage 
+   que les entités Java correspondent strictement aux tables en base, sans y toucher.
+2. baseline-on-migrate: true :
+   Lorsque Flyway s'exécute sur une base existante non vierge (par exemple une base 
+   créée par un script d'initialisation Docker ou un ancien schéma), Flyway refuse 
+   par défaut de migrer pour ne pas corrompre les données. L'option 
+   "baseline-on-migrate: true" indique à Flyway d'enregistrer l'état actuel de la 
+   base comme référence (Baseline v1) et de poursuivre sereinement.
+
+EXTRAIT DANS application.yml :
+-------------------------------------------------------------------------------
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: true
+    show-sql: false
+
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:true}
+    locations: ${FLYWAY_LOCATIONS:classpath:db/migration}
+-------------------------------------------------------------------------------
+
+===============================================================================
+4. ETAPE 3 : CREATION DU SCRIPT DDL INITIAL (V1)
+===============================================================================
+OÙ :
+Fichier : NeuroFlow/neuroflow-backend/src/main/resources/db/migration/V1__init_schema.sql
+
+QUOI :
+Création du script SQL initial contenant la table "app_users", ses contraintes 
+et ses index.
+
+POURQUOI :
+Ce script reflète exactement l'unique entité JPA du projet :
+com.neuroflow.backend.domain.AppUser
+- Clé primaire auto-incrémentée (BIGSERIAL / IDENTITY)
+- username : VARCHAR(64), non nul, unique
+- password_hash : VARCHAR(100), non nul
+- roles : VARCHAR(128), non nul
+- enabled : BOOLEAN, non nul avec valeur par défaut TRUE
+- Index idx_app_users_username pour accélérer les requêtes d'authentification.
+
+CONTENU EXACT DU FICHIER V1__init_schema.sql :
+-------------------------------------------------------------------------------
+-- =============================================================================
+-- Migration V1: Initial schema for NeuroFlow PostgreSQL database
+-- Corresponds to JPA Entity: com.neuroflow.backend.domain.AppUser
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS app_users (
+    id            BIGSERIAL PRIMARY KEY,
+    username      VARCHAR(64) NOT NULL UNIQUE,
+    password_hash VARCHAR(100) NOT NULL,
+    roles         VARCHAR(128) NOT NULL,
+    enabled       BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+-- Index for optimized lookups on username
+CREATE INDEX IF NOT EXISTS idx_app_users_username ON app_users (username);
+-------------------------------------------------------------------------------
+
+===============================================================================
+5. ETAPE 4 : DEPLOIEMENT DOCKER ET LOGS DE DEMARRAGE
+===============================================================================
+COMMANDE LANCEE :
+docker compose up -d --build
+
+RESULTAT DU BUILD ET DEMARRAGE DES CONTENEURS :
+- Image neuroflow-backend:local   Built
+- Image neuroflow-ui:local        Built
+- Image neuroflow-analytics:local Built
+- Conteneurs sains et opérationnels (Healthy) :
+  * neuroflow-postgres (port 5432)
+  * neuroflow-kafka (port 9092)
+  * neuroflow-redis (port 6379)
+  * neuroflow-clickhouse (ports 8123, 9000)
+  * neuroflow-analytics (port 8001)
+  * neuroflow-backend (port 8080)
+  * neuroflow-ui (port 3000)
+
+EXTRAIT DES LOGS FLYWAY LORS DU PREMIER DEMARRAGE :
+-------------------------------------------------------------------------------
+INFO --- org.flywaydb.core.FlywayExecutor     : Database: jdbc:postgresql://postgres:5432/neuroflow_db (PostgreSQL 16.14)
+INFO --- o.f.c.i.s.JdbcTableSchemaHistory     : Schema history table "public"."flyway_schema_history" does not exist yet
+INFO --- o.f.core.internal.command.DbValidate : Successfully validated 1 migration (execution time 00:00.040s)
+INFO --- o.f.c.i.s.JdbcTableSchemaHistory     : Creating Schema History table "public"."flyway_schema_history" with baseline ...
+INFO --- o.f.core.internal.command.DbBaseline : Successfully baselined schema with version: 1
+INFO --- o.f.core.internal.command.DbMigrate  : Current version of schema "public": 1
+INFO --- o.f.core.internal.command.DbMigrate  : Schema "public" is up to date. No migration necessary.
+INFO --- o.hibernate.jpa.internal.util.LogHelper : Processing PersistenceUnitInfo [name: default]
+-------------------------------------------------------------------------------
+
+EXPLICATION DU RESULTAT :
+La base contenait déjà des tables initiales issues du script Docker. Flyway a :
+1. Créé la table interne "flyway_schema_history".
+2. Posé la baseline à la version 1 sans erreur.
+3. Hibernate a validé le schéma avec succès.
+
+===============================================================================
+6. ANALYSE ET RESOLUTION DES ERREURS RENCONTREES
+===============================================================================
+
+-------------------------------------------------------------------------------
+ERREUR 1 : "cd : Impossible de trouver le chemin d'accès ...\NeuroFlow\NeuroFlow\neuroflow-backend"
+-------------------------------------------------------------------------------
+CAUSE :
+Le terminal PowerShell se trouvait déjà dans le dossier "...\Project 1 - FlyWay\NeuroFlow".
+Taper "cd NeuroFlow/neuroflow-backend" a provoqué une tentative d'accès à un double 
+dossier inexistant.
+SOLUTION :
+Taper simplement : cd neuroflow-backend
+
+-------------------------------------------------------------------------------
+ERREUR 2 : "ClassNotFoundException: com.neuroflow.backend.NeuroFlowBackendApplication" lors de "mvn spring-boot:run"
+-------------------------------------------------------------------------------
+CAUSE :
+1. Bug Windows / Java lié aux chemins avec accents : Le chemin du projet contient 
+   "Génie Logiciel" (avec un "é"). Le plugin Maven spring-boot génère un fichier 
+   d'arguments temporaire (@argfile) dont l'encodage sous Windows corrompt le "é", 
+   rendant le dossier des classes introuvable par java.exe.
+2. Conflit de port : Le conteneur Docker "neuroflow-backend" tournait déjà sur 
+   le port 8080.
+SOLUTION :
+L'application s'exécute dans Docker via docker compose. Si une exécution locale 
+est nécessaire, exécuter directement : java -jar target/neuroflow-backend-0.1.0-SNAPSHOT.jar 
+(en arrêtant au préalable le conteneur backend).
+
+-------------------------------------------------------------------------------
+ERREUR 3 : "FATAL: role "postgres" does not exist"
+-------------------------------------------------------------------------------
+CAUSE :
+La commande exécutée était :
+docker exec -it neuroflow-postgres psql -U postgres -d neuroflow -c "..."
+Or dans ce projet, l'utilisateur PostgreSQL est "neuroflow" et la base est "neuroflow_db".
+SOLUTION :
+docker exec -it neuroflow-postgres psql -U neuroflow -d neuroflow_db -c "..."
+
+-------------------------------------------------------------------------------
+ERREUR 4 : "no such service: neuroflow-backend"
+-------------------------------------------------------------------------------
+CAUSE :
+La commande exécutée était :
+docker compose up -d --build neuroflow-backend
+Or dans "docker-compose.yml", le bloc services déclare le service sous le nom 
+"backend:" ("neuroflow-backend" est uniquement la propriété "container_name").
+SOLUTION :
+docker compose up -d --build backend
+
+===============================================================================
+7. ETAPE 5 : VALIDATION DU VERSIONNEMENT AVEC UNE MIGRATION V2
+===============================================================================
+OÙ :
+Fichier : NeuroFlow/neuroflow-backend/src/main/resources/db/migration/V2__add_alert_events.sql
+
+QUOI :
+Création d'une nouvelle migration pour tester l'application automatique de Flyway.
+
+CONTENU DU FICHIER V2__add_alert_events.sql :
+-------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS alert_events (
+    id BIGSERIAL PRIMARY KEY,
+    source VARCHAR(64) NOT NULL,
+    message TEXT NOT NULL,
+    severity VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+-------------------------------------------------------------------------------
+
+COMMANDE DE MISE A JOUR DU CONTENEUR :
+docker compose up -d --build backend
+
+RESULTAT DANS LES LOGS DU BACKEND :
+-------------------------------------------------------------------------------
+INFO --- org.flywaydb.core.FlywayExecutor    : Database: jdbc:postgresql://postgres:5432/neuroflow_db (PostgreSQL 16.14)
+INFO --- o.f.core.internal.command.DbValidate : Successfully validated 3 migrations (execution time 00:00.053s)
+INFO --- o.f.core.internal.command.DbMigrate  : Migrating schema "public" to version "2 - add alert events"
+INFO --- o.f.core.internal.command.DbMigrate  : Successfully applied 1 migration to schema "public", now at version v2 (execution time 00:00.060s)
+-------------------------------------------------------------------------------
+
+Flyway a détecté que la base était à la version 1, a identifié la migration 2 
+manquante et l'a exécutée automatiquement sans interruption du service.
+
+===============================================================================
+8. ETAPE 6 : RECAPITULATIF DES COMMANDES ET RESULTATS OBTENUS
+===============================================================================
+
+-------------------------------------------------------------------------------
+COMMANDE 1 : Vérifier la table d'historique Flyway dans PostgreSQL
+-------------------------------------------------------------------------------
+COMMANDE :
+docker exec neuroflow-postgres psql -U neuroflow -d neuroflow_db -c "SELECT installed_rank, version, description, type, script, checksum, success FROM flyway_schema_history;"
+
+RESULTAT OBTENU :
+ installed_rank | version |      description      |   type   |          script          |  checksum  | success 
+----------------+---------+-----------------------+----------+--------------------------+------------+---------
+              1 | 1       | << Flyway Baseline >> | BASELINE | << Flyway Baseline >>    |            | t
+              2 | 2       | add alert events      | SQL      | V2__add_alert_events.sql | 1813715593 | t
+(2 rows)
+
+INTERPRETATION :
+- Ligne 1 : Baseline enregistrée à la version 1 (état initial).
+- Ligne 2 : Migration V2 appliquée avec succès (success = 't') et son empreinte (checksum) calculée.
+
+-------------------------------------------------------------------------------
+COMMANDE 2 : Vérifier la structure de la table alert_events créée par V2
+-------------------------------------------------------------------------------
+COMMANDE :
+docker exec neuroflow-postgres psql -U neuroflow -d neuroflow_db -c "\d alert_events"
+
+RESULTAT OBTENU :
+                                       Table "public.alert_events"
+   Column   |           Type           | Collation | Nullable |                 Default                  
+------------+--------------------------+-----------+----------+------------------------------------------
+ id         | bigint                   |           | not null | nextval('alert_events_id_seq'::regclass)
+ source     | character varying(64)    |           | not null | 
+ message    | text                     |           | not null | 
+ severity   | character varying(20)    |           | not null | 
+ created_at | timestamp with time zone |           |          | CURRENT_TIMESTAMP
+Indexes:
+    "alert_events_pkey" PRIMARY KEY, btree (id)
+
+INTERPRETATION :
+La table "alert_events", sa clé primaire et sa séquence auto-générée sont 
+parfaitement créées dans le schéma public de PostgreSQL.
+
+-------------------------------------------------------------------------------
+COMMANDE 3 : Vérifier le statut des conteneurs de la stack NeuroFlow
+-------------------------------------------------------------------------------
+COMMANDE :
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+RESULTAT OBTENU :
+NAMES                STATUS                   PORTS
+neuroflow-grafana    Up 15 minutes            0.0.0.0:3001->3000/tcp
+neuroflow-prometheus Up 15 minutes            0.0.0.0:9090->9090/tcp
+neuroflow-ui         Up 15 minutes            0.0.0.0:3000->3000/tcp
+neuroflow-backend    Up 5 minutes (healthy)   0.0.0.0:8080->8080/tcp
+neuroflow-kafka      Up 15 minutes (healthy)  0.0.0.0:9092->9092/tcp
+neuroflow-postgres   Up 15 minutes (healthy)  0.0.0.0:5432->5432/tcp
+neuroflow-redis      Up 15 minutes (healthy)  0.0.0.0:6379->6379/tcp
+neuroflow-clickhouse Up 15 minutes (healthy)  0.0.0.0:8123->8123/tcp, 0.0.0.0:9000->9000/tcp
+neuroflow-analytics  Up 5 minutes (healthy)   0.0.0.0:8001->8000/tcp
+neuroflow-zookeeper  Up 15 minutes (healthy)  0.0.0.0:2181->2181/tcp
+
+===============================================================================
+9. CONCLUSION ET ETAT PRET POUR LA PHASE 2
+===============================================================================
+La PHASE 1 est un succès total :
+1. Flyway versionne désormais la base PostgreSQL de NeuroFlow de façon transparente.
+2. Le code Java métier et les contrôleurs n'ont subi aucune modification.
+3. Hibernate opère en mode validation stricte.
+4. Le mécanisme de Baseline a protégé la base existante d'éventuels conflits.
+5. Une migration incrémentale V2 a été appliquée et validée avec succès.
+6. L'infrastructure est stable et prête pour les prochaines phases du TP.
+
+===============================================================================
+10. PROMPT DE RESUME POUR L'AUTRE AGENT (POUR REPRENDRE PLUS TARD)
+===============================================================================
+Contexte et progression du projet NeuroFlow :
+
+Phase 1 (Local & Flyway) : Terminée et validée avec succès. L'intégration des 
+dépendances Flyway (core et postgresql) est faite dans Spring Boot 3 / Java 21, 
+Hibernate est configuré en mode validate, et les scripts de migration 
+(V1__init_schema.sql et V2__add_alert_events.sql) ont été testés et validés 
+avec succès sur Docker/PostgreSQL local (flyway_schema_history opérationnel).
+
+Phase 2 (Cloud GCP) : En pause (En attente de validation du compte étudiant). 
+gcloud est installé et authentifié, et le projet GCP (neuroflow-tp-2026) est 
+créé. La demande de compte académique/étudiant a été soumise auprès de Google.
+
+Objectif suivant (à la reprise) : Associer la facturation dès réception de la 
+validation, activer les API GCP (sqladmin, run, etc.), créer l'instance Cloud 
+SQL for PostgreSQL, et déployer le backend sur Cloud Run pour obtenir l'URL 
+publique.
+===============================================================================
+
+

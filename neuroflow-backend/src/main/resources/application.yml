@@ -13,7 +13,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
     open-in-view: false
     properties:
       hibernate:
@@ -21,6 +21,11 @@ spring:
           time_zone: UTC
         format_sql: true
     show-sql: false
+
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:true}
+    locations: ${FLYWAY_LOCATIONS:classpath:db/migration}
 
   data:
     redis:
