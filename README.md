@@ -7,6 +7,7 @@
 [![CI](https://github.com/AyoubElKharraf/NeuroFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/AyoubElKharraf/NeuroFlow/actions/workflows/ci.yml)
 [![Java](https://img.shields.io/badge/Java-21-orange.svg)](https://www.oracle.com/java/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![Flyway](https://img.shields.io/badge/Flyway-10.x-CC0000.svg)](https://flywaydb.org/)
 [![Kafka](https://img.shields.io/badge/Apache%20Kafka-Confluent-black.svg)](https://kafka.apache.org/)
 [![ClickHouse](https://img.shields.io/badge/ClickHouse-24.8-yellow.svg)](https://clickhouse.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688.svg)](https://fastapi.tiangolo.com/)
@@ -69,15 +70,16 @@ Dans les architectures distribuées, deux signaux critiques restent souvent invi
 1. [Architecture](#architecture)
 2. [Fonctionnalités](#fonctionnalités)
 3. [Stack technique](#stack-technique)
-4. [Démarrage rapide (Docker)](#démarrage-rapide-docker)
-5. [Credentials & URLs](#credentials--urls)
-6. [Structure du repository](#structure-du-repository)
-7. [API REST & SSE](#api-rest--sse)
-8. [MLOps — drift & inférence](#mlops--drift--inférence)
-9. [Webhooks Slack / Discord](#webhooks-slack--discord)
-10. [Tests & CI](#tests--ci)
-11. [Roadmap](#roadmap)
-12. [Licence](#licence)
+4. [Gestion des Migrations (Flyway)](#gestion-des-migrations-flyway)
+5. [Démarrage rapide (Docker)](#démarrage-rapide-docker)
+6. [Credentials & URLs](#credentials--urls)
+7. [Structure du repository](#structure-du-repository)
+8. [API REST & SSE](#api-rest--sse)
+9. [MLOps — drift & inférence](#mlops--drift--inférence)
+10. [Webhooks Slack / Discord](#webhooks-slack--discord)
+11. [Tests & CI](#tests--ci)
+12. [Roadmap](#roadmap)
+13. [Licence](#licence)
 
 ---
 
@@ -142,13 +144,49 @@ Pipeline **Event-Driven** : couplage faible, faible latence, stack entièrement 
 
 | Couche | Technologies |
 |--------|----------------|
-| Backend | Java 21, Spring Boot 3.3, Spring Cloud Stream (Kafka), JPA, Redis, Micrometer |
-| Analytique | ClickHouse 24.8, PostgreSQL 16 |
+| Backend | Java 21, Spring Boot 3.3, Spring Cloud Stream (Kafka), Redis, Micrometer |
+| Persistance & Migrations | PostgreSQL 16, Flyway 10, Spring Data JPA, Hibernate (validation) |
+| Analytique | ClickHouse 24.8 |
 | MLOps | Python 3.11, FastAPI, Evidently, scikit-learn, Pandas |
 | Frontend | Next.js 15, TypeScript, Tailwind, Recharts |
 | Observabilité | Spring Actuator, Prometheus |
 | Infra | Docker Compose (Zookeeper, Kafka, Postgres, ClickHouse, Redis, apps, Prometheus) |
 | Qualité | GitHub Actions, Testcontainers, Maven, pytest, Playwright |
+
+---
+
+## Gestion des Migrations (Flyway)
+
+NeuroFlow intègre **Flyway** pour assurer un versionnement continu, auditable et déterministe de la base de données relationnelle PostgreSQL, sans impacter le code métier ni les contrôleurs de l'application.
+
+### Pourquoi Flyway ?
+- **Reproductibilité & Fiabilité** : Élimine les dérives imprévisibles de schéma provoquées par `ddl-auto: update` d'Hibernate entre différents environnements (développement local, CI/CD, staging, production).
+- **Traçabilité & Audit** : Chaque script de migration DDL est horodaté, versionné et tracé dans la table d'historique PostgreSQL `flyway_schema_history` avec calcul de somme de contrôle (checksum) garantissant l'immutabilité des versions appliquées.
+- **Sécurité des données** : Empêche toute altération accidentelle du schéma tout en assurant une validation stricte du modèle objet JPA via Hibernate (`validate`).
+
+### Fonctionnement dans NeuroFlow
+1. **Validation Hibernate (`ddl-auto: validate`)** : Hibernate ne crée ni ne modifie plus le schéma directement. Il valide uniquement au démarrage la parfaite conformité entre les entités Java (`AppUser`, etc.) et le schéma PostgreSQL existant.
+2. **Ligne de base automatique (`baseline-on-migrate: true`)** : Si la base PostgreSQL contient déjà des tables (ex. conteneur pré-existant ou schéma bootstrap Docker), Flyway établit automatiquement une ligne de base (version `1`) pour éviter tout conflit d'initialisation.
+3. **Scripts de migration SQL versionnés (`src/main/resources/db/migration/`)** :
+   - `V1__init_schema.sql` : Création du schéma initial (table `app_users`, contraintes `UNIQUE`, index de recherche rapide).
+   - `V2__add_alert_events.sql` : Évolution de schéma incrémentale (table `alert_events` pour la persistance des alertes d'observabilité).
+
+### Commandes utiles
+
+- **Consulter l'historique des migrations appliquées dans PostgreSQL :**
+  ```bash
+  docker exec -it neuroflow-postgres psql -U neuroflow -d neuroflow_db -c "SELECT installed_rank, version, description, type, script, checksum, success FROM flyway_schema_history;"
+  ```
+
+- **Inspecter une table créée par une migration :**
+  ```bash
+  docker exec -it neuroflow-postgres psql -U neuroflow -d neuroflow_db -c "\d alert_events"
+  ```
+
+- **Appliquer une nouvelle migration lors d'un build du service backend :**
+  ```bash
+  docker compose up -d --build backend
+  ```
 
 ---
 
